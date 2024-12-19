@@ -1,20 +1,8 @@
 # chat_game
-<<<<<<< HEAD
+상식 퀴즈 게임
+이 프로젝트는 Firebase와 Flutter를 사용하여 개발된 상식 퀴즈 게임입니다.
+방을 만들거나 방을 들어가서 다른 유저와 게임을 할 수 있습니다
+게임의 특징은 제한된 시간 동안 퀴즈 문제를 가장 먼저 입력한 사람에게 점수가 들어가는 형식입니다. 
 
-A new Flutter project.
 
-## Getting Started
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
-개인 플러터 프로젝트입니다
->>>>>>> f3366176e715d0671eab3cbd4b5a69637a063573
