@@ -1,0 +1,49 @@
+name: chat_game
+description: A new Flutter project.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.1.1
+  firebase_auth: ^5.1.1
+  cloud_firestore: ^5.0.2
+  firebase_database: ^11.0.2
+  flutter_secure_storage: ^4.2.0
+  http: ^0.13.4
+  google_sign_in: ^6.2.0
+  firebase_messaging: ^15.0.2
+  kakao_flutter_sdk: ^1.1.0
+  cupertino_icons: ^1.0.6
+  uuid: ^3.0.4
+  web_socket_channel: ^3.0.0
+  intl: ^0.17.0
+  audioplayers: ^1.0.1
+  image_picker: ^0.8.6+1
+  permission_handler: ^10.2.0
+  image_cropper: ^3.0.1
+  firebase_storage: ^12.1.0
+  firebase_app_check: ^0.3.0+2  # Add this line
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/default_profile_image.png
+    - assets/splash.png
+    - assets/images/dashboardbackground.jpg
+    - assets/sounds/ding.mp3
+    - assets/images/logo.png
+    - assets/images/kakao_logo.png
+    - assets/images/google_logo.png

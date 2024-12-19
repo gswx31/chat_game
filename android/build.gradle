@@ -1,0 +1,30 @@
+buildscript {
+    ext.kotlin_version = '1.9.0' // Kotlin 버전을 적절히 업데이트하세요
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.0.2' // Android Gradle Plugin 버전
+        classpath 'com.google.gms:google-services:4.3.15' // Google 서비스 Gradle 플러그인
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

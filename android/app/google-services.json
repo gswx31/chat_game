@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "880220125401",
+    "project_id": "chatgame-f0cf3",
+    "storage_bucket": "chatgame-f0cf3.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:880220125401:android:49a2f7e69002598351e6c8",
+        "android_client_info": {
+          "package_name": "com.example.chat_game"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBAiT9REBms9TBoz7aPKbh47Io56lOhMfM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
