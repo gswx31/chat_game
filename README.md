@@ -13,7 +13,7 @@ Flutter: 네이티브처럼 작동하는 크로스플랫폼 UI 프레임워크.
 
 Firebase: 실시간 데이터베이스와 사용자 인증.
 <h2>대시보드</h2>
-<img src="assets/images/KakaoTalk_20241210_143741849.jpg" alt="대시보드">
+<img src="assets/images/KakaoTalk_20241210_143741849.jpg" alt="대시보드" width="600">
 
 <h2>방 만드는 화면</h2>
 <img src="assets/images/KakaoTalk_20241220_135517016.jpg" alt="방 만드는 사진" width="600">
