@@ -5,4 +5,11 @@
 게임의 특징은 제한된 시간 동안 퀴즈 문제를 가장 먼저 입력한 사람에게 점수가 들어가는 형식입니다. 
 
 
-<img src="assets/splash.png" alt="대시보드 화면" width="600">
+<img src="assets/images/KakaoTalk_20241210_143737124.jpg" alt="이미지 설명" width="600">
+<img src="assets/images/KakaoTalk_20241210_143738300.jpg" alt="이미지 설명" width="600">
+<img src="assets/images/KakaoTalk_20241210_143739269.jpg" alt="이미지 설명" width="600">
+<img src="assets/images/KakaoTalk_20241210_143740377.jpg" alt="이미지 설명" width="600">
+<img src="assets/images/KakaoTalk_20241210_143740859.jpg" alt="이미지 설명" width="600">
+<img src="assets/images/KakaoTalk_20241210_143741300.jpg" alt="이미지 설명" width="600">
+<img src="assets/images/KakaoTalk_20241210_143741849.jpg" alt="이미지 설명" width="600">
+<img src="assets/images/KakaoTalk_20241210_143801331.jpg" alt="이미지 설명" width="600">
