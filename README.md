@@ -5,4 +5,4 @@
 게임의 특징은 제한된 시간 동안 퀴즈 문제를 가장 먼저 입력한 사람에게 점수가 들어가는 형식입니다. 
 
 
-<img src="assets/dashboard_screen.png" alt="대시보드 화면" width="600">
+<img src="assets/splash.png" alt="대시보드 화면" width="600">
