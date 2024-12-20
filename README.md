@@ -7,12 +7,8 @@ Firebase를 활용한 실시간 데이터 관리.
 
 Flutter 기반의 크로스플랫폼 지원.
 
-기술 스택
 
-Flutter: 네이티브처럼 작동하는 크로스플랫폼 UI 프레임워크.
-
-Firebase: 실시간 데이터베이스와 사용자 인증.
-<h2>스크린샷 슬라이드</h2>
+<h4>어플리케이션 화면</h4>
 <details>
   <summary>대시보드</summary>
   <img src="assets/images/KakaoTalk_20241210_143741849.jpg" alt="대시보드" width="600">
