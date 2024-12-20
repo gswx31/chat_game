@@ -10,10 +10,10 @@
 <img src="assets/images/KakaoTalk_20241210_143741849.jpg" alt="대시보드" width="600">
 
 <h2>방 만드는 화면</h2>
-<img src="assets/images/KakaoTalk_20241210_143741300.jpg" alt="방 만드는 사진" width="600">
+<img src="assets/images/KakaoTalk_20241220_135517016.jpg" alt="방 만드는 사진" width="600">
 
 <h2>방 들어가는 화면</h2>
-<img src="assets/images/KakaoTalk_20241210_143740859.jpg" alt="방 들어가는 사진" width="600">
+<img src="assets/images/KakaoTalk_20241210_143741300.jpg" alt="방 들어가는 사진" width="600">
 
 <h2>방 로비 화면</h2>
 <img src="assets/images/KakaoTalk_20241210_143740859.jpg" alt="방 로비 사진" width="600">
