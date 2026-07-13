@@ -215,14 +215,7 @@ class _Podium extends StatelessWidget {
               children: [
                 Text(medals[podiumIdx], style: const TextStyle(fontSize: 24)),
                 const SizedBox(height: 4),
-                CircleAvatar(
-                  radius: rank == 0 ? 30 : 24,
-                  backgroundColor: Colors.white.withOpacity(0.3),
-                  backgroundImage: photoURL.isNotEmpty
-                      ? NetworkImage(photoURL) as ImageProvider
-                      : const AssetImage(
-                          'assets/images/default_profile_image.png'),
-                ),
+                _SafeAvatar(photoURL: photoURL, name: name, radius: rank == 0 ? 30 : 24, lightBg: true),
                 const SizedBox(height: 6),
                 Text(
                   name,
@@ -319,14 +312,7 @@ class _RankRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: AppColors.primary.withOpacity(0.15),
-            backgroundImage: photoURL.isNotEmpty
-                ? NetworkImage(photoURL) as ImageProvider
-                : const AssetImage(
-                    'assets/images/default_profile_image.png'),
-          ),
+          _SafeAvatar(photoURL: photoURL, name: name, radius: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text(name,
@@ -354,6 +340,58 @@ class _RankRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SafeAvatar extends StatelessWidget {
+  final String photoURL;
+  final String name;
+  final double radius;
+  final bool lightBg;
+
+  const _SafeAvatar({
+    required this.photoURL,
+    required this.name,
+    required this.radius,
+    this.lightBg = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = lightBg
+        ? Colors.white.withOpacity(0.3)
+        : AppColors.primary.withOpacity(0.15);
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: bg,
+      child: ClipOval(
+        child: SizedBox.expand(
+          child: photoURL.isNotEmpty
+              ? Image.network(
+                  photoURL,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Center(
+                    child: Text(initial,
+                        style: TextStyle(
+                          color: lightBg ? Colors.white : AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: radius * 0.75,
+                        )),
+                  ),
+                )
+              : Center(
+                  child: Text(initial,
+                      style: TextStyle(
+                        color: lightBg ? Colors.white : AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: radius * 0.75,
+                      )),
+                ),
+        ),
       ),
     );
   }

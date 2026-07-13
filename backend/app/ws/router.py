@@ -120,29 +120,32 @@ async def room_socket(
                 )
                 await engine.submit_chat(user_id, text)
             elif kind == P.C_START:
-                if cfg.owner_id != user_id:
-                    await websocket.send_json(
-                        {"type": P.S_ERROR, "message": "방장만 시작할 수 있어요"}
-                    )
-                    continue
                 if engine.status != "waiting":
                     await websocket.send_json(
                         {"type": P.S_ERROR, "message": "이미 진행중이거나 종료됐어요"}
                     )
                     continue
                 # Flip DB status synchronously so a parallel REST GET reflects it.
+                # Re-query owner_id from DB so ownership changes (future feature) are reflected.
                 async with SessionLocal() as db:
                     row = await db.get(Room, room_id)
-                    if row:
-                        row.status = "playing"
-                        row.last_active_at = datetime.now(UTC)
-                        await db.commit()
+                    if not row or row.owner_id != user_id:
+                        await websocket.send_json(
+                            {"type": P.S_ERROR, "message": "방장만 시작할 수 있어요"}
+                        )
+                        continue
+                    row.status = "playing"
+                    row.last_active_at = datetime.now(UTC)
+                    await db.commit()
                 await engine.start()
             elif kind == P.C_SKIP:
                 await engine.vote_skip(user_id)
             elif kind == P.C_KICK:
                 target = str(data.get("target_user_id", ""))
-                if cfg.owner_id != user_id:
+                async with SessionLocal() as db:
+                    row = await db.get(Room, room_id)
+                    is_owner = row is not None and row.owner_id == user_id
+                if not is_owner:
                     await websocket.send_json(
                         {"type": P.S_ERROR, "message": "방장만 강퇴할 수 있어요"}
                     )

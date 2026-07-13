@@ -16,9 +16,9 @@ class LobbyScreen extends ConsumerWidget {
     final uid = ref.watch(currentUidProvider);
     final gs = ref.watch(wsGameRoomProvider(roomId));
 
-    // Navigate to game screen when game starts
+    // Navigate when game starts — also handles joining a room already in progress
     ref.listen(wsGameRoomProvider(roomId), (prev, next) {
-      if (next.status == 'playing' && prev?.status != 'playing' && context.mounted) {
+      if (next.connected && next.status == 'playing' && context.mounted) {
         context.go(Routes.game(roomId));
       }
       if (next.status == 'ended' && context.mounted) {

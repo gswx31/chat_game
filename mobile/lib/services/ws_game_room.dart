@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -178,9 +179,13 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
 
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  bool _disposed = false;
   int _chatSeq = 0;
 
   void _connect() {
+    if (_disposed) return;
     final uri = Uri.parse(
       '${ApiConfig.wsBase}/ws/rooms/$roomId?token=${Uri.encodeComponent(token)}',
     );
@@ -189,6 +194,7 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
       _sub = _channel!.stream.listen(
         (data) {
           final str = data is String ? data : utf8.decode(data as List<int>);
+          _reconnectAttempts = 0; // reset on successful message
           if (!state.connected) state = state.copyWith(connected: true);
           try {
             _handle(json.decode(str) as Map<String, dynamic>);
@@ -197,17 +203,38 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
           }
         },
         onDone: () {
-          if (mounted) state = state.copyWith(connected: false);
+          if (!mounted) return;
+          state = state.copyWith(connected: false);
+          _scheduleReconnect();
         },
         onError: (e) {
           debugPrint('WS error: $e');
-          if (mounted) state = state.copyWith(connected: false);
+          if (!mounted) return;
+          state = state.copyWith(connected: false);
+          _scheduleReconnect();
         },
       );
     } catch (e) {
       debugPrint('WS connect error: $e');
-      state = state.copyWith(connected: false);
+      if (mounted) {
+        state = state.copyWith(connected: false);
+        _scheduleReconnect();
+      }
     }
+  }
+
+  void _scheduleReconnect() {
+    if (_disposed) return;
+    final delay = Duration(seconds: min(1 << _reconnectAttempts, 30));
+    _reconnectAttempts++;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () {
+      if (!_disposed) {
+        _sub?.cancel();
+        _channel?.sink.close();
+        _connect();
+      }
+    });
   }
 
   void send(Map<String, dynamic> msg) {
@@ -390,6 +417,8 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
 
   @override
   void dispose() {
+    _disposed = true;
+    _reconnectTimer?.cancel();
     _sub?.cancel();
     _channel?.sink.close();
     super.dispose();

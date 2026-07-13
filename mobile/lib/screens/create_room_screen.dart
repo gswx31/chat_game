@@ -18,6 +18,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   String _roomName = '';
   bool _isPublic = true;
   int _winScore = 20;
+  String? _selectedQuestionSetId;
   int _roundSeconds = 30;
   int _maxPlayers = 30;
   final Set<String> _selectedCategories = {};
@@ -34,7 +35,8 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         winScore: _winScore,
         roundSeconds: _roundSeconds,
         maxPlayers: _maxPlayers,
-        categories: _selectedCategories.toList(),
+        categories: _selectedQuestionSetId != null ? [] : _selectedCategories.toList(),
+        questionSetId: _selectedQuestionSetId,
       );
       if (mounted) context.go(Routes.lobby(room.id));
     } catch (e) {
@@ -55,6 +57,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   @override
   Widget build(BuildContext context) {
     final catsAsync = ref.watch(categoriesProvider);
+    final qSetsAsync = ref.watch(myQuestionSetsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('방 만들기')),
@@ -164,7 +167,59 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Categories
+                  // Custom question set
+                  _SectionLabel('커스텀 질문 세트 (선택)'),
+                  const SizedBox(height: 4),
+                  const Text('내가 만든 질문 세트로 게임하기',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+                  const SizedBox(height: 10),
+                  qSetsAsync.when(
+                    loading: () => const SizedBox(
+                        height: 40,
+                        child: Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary, strokeWidth: 2))),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (sets) {
+                      if (sets.isEmpty) {
+                        return const Text('아직 만든 질문 세트가 없습니다.',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 13));
+                      }
+                      return DropdownButtonFormField<String?>(
+                        value: _selectedQuestionSetId,
+                        decoration: InputDecoration(
+                          hintText: '기본 질문 풀 사용',
+                          prefixIcon: const Icon(Icons.quiz_rounded,
+                              color: AppColors.primary),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide:
+                                  BorderSide(color: Colors.grey.shade200)),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('기본 질문 풀 사용'),
+                          ),
+                          ...sets.map((s) => DropdownMenuItem<String?>(
+                                value: s.id,
+                                child: Text(
+                                    '${s.title} (${s.questionCount}문항)',
+                                    overflow: TextOverflow.ellipsis),
+                              )),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _selectedQuestionSetId = v),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Categories (disabled when question set is selected)
                   Row(
                     children: [
                       const Expanded(child: _SectionLabel('카테고리')),
@@ -189,7 +244,11 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                         child: Center(
                             child: CircularProgressIndicator(
                                 color: AppColors.primary, strokeWidth: 2))),
-                    error: (_, __) => const SizedBox.shrink(),
+                    error: (e, _) => Text(
+                      '카테고리를 불러오지 못했습니다: $e',
+                      style: const TextStyle(
+                          color: AppColors.danger, fontSize: 12),
+                    ),
                     data: (cats) => Wrap(
                       spacing: 8,
                       runSpacing: 8,

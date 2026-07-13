@@ -8,6 +8,9 @@ class ApiService {
 
   String? _token;
 
+  /// Called when the server returns 401 — wire this up in main.dart to trigger sign-out.
+  void Function()? onUnauthorized;
+
   void setToken(String t) => _token = t;
   void clearToken() => _token = null;
   String? get token => _token;
@@ -70,6 +73,11 @@ class ApiService {
   }
 
   void _check(http.Response res) {
+    if (res.statusCode == 401) {
+      clearToken();
+      onUnauthorized?.call();
+      throw Exception('로그인이 만료되었습니다. 다시 로그인해주세요.');
+    }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('API ${res.statusCode}: ${utf8.decode(res.bodyBytes)}');
     }

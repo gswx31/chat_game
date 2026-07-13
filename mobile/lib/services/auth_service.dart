@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'api_service.dart';
+import 'storage_service.dart';
 
 const _kTokenKey = 'backend_token';
 
@@ -42,14 +42,14 @@ class AuthService {
   static final instance = AuthService._();
 
   final _auth = FirebaseAuth.instance;
-  static const _storage = FlutterSecureStorage();
+  final _storage = StorageService.instance;
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   /// Restores the backend JWT on app start so API calls work immediately.
   Future<void> loadStoredToken() async {
-    final token = await _storage.read(key: _kTokenKey);
+    final token = await _storage.read(_kTokenKey);
     if (token != null) ApiService.instance.setToken(token);
   }
 
@@ -86,7 +86,7 @@ class AuthService {
     await GoogleSignIn().signOut();
     await _auth.signOut();
     ApiService.instance.clearToken();
-    await _storage.delete(key: _kTokenKey);
+    await _storage.delete(_kTokenKey);
   }
 
   /// Fetch the current user's profile from the backend.
@@ -108,7 +108,7 @@ class AuthService {
       final token = data['access_token'] as String?;
       if (token != null) {
         ApiService.instance.setToken(token);
-        await _storage.write(key: _kTokenKey, value: token);
+        await _storage.write(_kTokenKey, token);
       }
     } catch (e) {
       debugPrint('updateDisplayName error: $e');
@@ -136,7 +136,7 @@ class AuthService {
       });
       final token = data['access_token'] as String;
       ApiService.instance.setToken(token);
-      await _storage.write(key: _kTokenKey, value: token);
+      await _storage.write(_kTokenKey, token);
     } catch (e) {
       debugPrint('Backend upsert error: $e');
     }

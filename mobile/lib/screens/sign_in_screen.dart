@@ -111,16 +111,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen>
                     ),
                     const Spacer(flex: 3),
 
-                    // Kakao
-                    _SocialButton(
-                      label: '카카오로 로그인',
-                      iconPath: 'assets/images/kakao_logo.png',
-                      bgColor: const Color(0xFFFEE500),
-                      textColor: const Color(0xFF3A1D1D),
-                      onPressed: null, // TODO: Kakao
-                    ),
-                    const SizedBox(height: 12),
-
                     // Google
                     _SocialButton(
                       label: '구글로 로그인',
