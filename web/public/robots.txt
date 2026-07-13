@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /j/
+Disallow: /rooms/
+Disallow: /lobby
+
+Sitemap: https://sangbae.vercel.app/sitemap.xml

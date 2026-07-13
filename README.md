@@ -1,46 +1,126 @@
-# chat_game
-프로젝트 개요
+# ChatGame — Realtime Trivia (끄투 / 노래맞추기 스타일)
 
-Chat Game은 실시간으로 진행되는 멀티플레이 상식 퀴즈 게임입니다. 사용자들은 방을 생성하거나 기존 방에 참여해 다른 플레이어와 대결할 수 있습니다. 제한된 시간 안에 가장 빠르게 정답을 입력한 플레이어가 점수를 획득하는 방식으로 진행됩니다.
+실시간 채팅으로 진행되는 멀티플레이 상식 퀴즈. 스타크래프트 유즈맵
+*노래맞추기* 의 플로우를 저작권 문제를 피해 **텍스트 상식 문제**로 옮긴 게임입니다.
 
-Firebase를 활용한 실시간 데이터 관리.
+핵심 룰:
+- 방장이 옵션 설정 (목표 점수, 라운드 시간, 카테고리, 최대 인원, 공개/비공개)
+- 문제 1개 출제 → 채팅으로 **가장 먼저 정답** 친 사람 +1점
+- 정답 비교는 **공백·대소문자·일부 문장부호 무시** + `accepted_answers` 대체 표기
+- 라운드 절반 지나면 **자동 초성 힌트**
+- 일정 인원 이상 스킵 투표 시 다음 문제로
+- 누군가 **목표 점수** 도달하면 승리, 결과 화면 → **방장 리매치** 또는 로비로
 
-Flutter 기반의 크로스플랫폼 지원.
+접근성 (친구끼리 빠르게 모이기):
+- 방마다 **6자리 코드** (영문/숫자, 헷갈리는 0/O/1/I/L 제외)
+- 사인인 화면에서 **닉네임 + 방코드** 한 번에 입력하면 그대로 방까지 입장
+- `/j/{CODE}` 짧은 링크 → 카톡으로 보내면 누르자마자 들어옴
+- 마지막 닉네임 기억, 모바일 가로폭 대응
 
+Sealed-room (끄투 룰):
+- **게임 시작 후 신규 입장 X, 재입장 X**. 네트워크 끊김도 마찬가지 — 한 번 나가면 끝.
+- 빈 방은 자동 종료.
+- 방장이 **리매치** 누르면 같은 방에서 다시 모집 시작 (점수 0부터, 입장 다시 가능).
 
-<h4>어플리케이션 화면</h4>
-<details>
-  <summary>대시보드</summary>
-  <img src="assets/images/KakaoTalk_20241210_143741849.jpg" alt="대시보드" width="600">
-</details>
+## 모노레포 구조
 
-<details>
-  <summary>방 만드는 화면</summary>
-  <img src="assets/images/KakaoTalk_20241220_135517016.jpg" alt="방 만드는 화면" width="600">
-</details>
+```
+chatGame/
+├── backend/      FastAPI + SQLAlchemy(async) + Redis + Alembic
+├── web/          React + Vite + TS
+├── mobile/       기존 Flutter 코드 (백엔드 완성 후 마이그레이션 예정)
+├── shared/       (예약)
+├── docker-compose.yml   Postgres + Redis (개발용)
+└── README.md
+```
 
-<details>
-  <summary>방 들어가는 화면</summary>
-  <img src="assets/images/KakaoTalk_20241210_143741300.jpg" alt="방 들어가는 화면" width="600">
-</details>
+## MVP 진행 상태
 
-<details>
-  <summary>방 로비 화면</summary>
-  <img src="assets/images/KakaoTalk_20241210_143740859.jpg" alt="방 로비 화면" width="600">
-</details>
+| 영역 | 상태 |
+|---|---|
+| 모노레포 구조 정리 | ✅ |
+| Postgres + Redis (compose) | ✅ |
+| FastAPI 부트, JWT 게스트 로그인, 방 CRUD | ✅ |
+| 새 문제 테이블 + 75+ 문항 시드 (8 카테고리) | ✅ |
+| 방 코드 + 공개/비공개 + by-code 입장 + /j/CODE | ✅ |
+| WebSocket 게임 엔진 (서버 타이머, 첫정답 Redis 락, 점수, 힌트, 스킵) | ✅ |
+| 결과 화면 + 리매치 | ✅ |
+| Sealed-after-start + 빈방 자동 종료 | ✅ |
+| Alembic 마이그레이션 (`create_all` 폐기) | ✅ |
+| 모바일 가로폭 대응 | ✅ |
+| Redis pub/sub fanout (다중 워커) | ⏳ |
+| Flutter 모바일 신규 백엔드 연동 | ⏳ |
+| 소셜 로그인 (Google/Kakao) | ⏳ |
 
-<details>
-  <summary>게임 화면</summary>
-  <img src="assets/images/KakaoTalk_20241210_143739269.jpg" alt="게임 화면" width="600">
-</details>
+## 로컬 실행
 
-<details>
-  <summary>정답을 맞췄을 때</summary>
-  <img src="assets/images/KakaoTalk_20241210_143738300.jpg" alt="정답을 맞췄을 때" width="600">
-</details>
+### 0. 필요한 것
 
-<details>
-  <summary>점수 화면</summary>
-  <img src="assets/images/KakaoTalk_20241210_143737124.jpg" alt="점수 화면" width="600">
-</details>
+- Docker Desktop
+- Python 3.12+
+- Node.js 20+
 
+### 1. 인프라
+
+```powershell
+docker compose up -d
+```
+
+### 2. 백엔드
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e ".[dev]"
+copy .env.example .env
+
+# 스키마 적용 (Alembic, 첫 실행 + 변경 시마다)
+alembic upgrade head
+
+# 문제 시드 (75+ 문항 추천)
+python -m scripts.import_questions scripts/questions_seed.csv
+
+# 서버 실행
+uvicorn app.main:app --reload --port 8000
+```
+
+API docs: <http://localhost:8000/docs>
+
+### 3. 웹
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+브라우저: <http://localhost:5173>
+
+### 4. 친구 흐름 테스트
+
+1. 브라우저 창 A: 닉네임 입력 → 방 만들기 → 방 화면에 뜬 코드(예: `ABCD42`) 또는 "링크 복사"
+2. 브라우저 창 B (시크릿 창): 받은 링크(`/j/ABCD42`) 열거나, 사인인 화면 방코드 칸에 코드 입력
+3. 창 A에서 "게임 시작" → 채팅창에 정답 입력 시작
+4. 누군가 목표 점수 도달 → 결과 모달 → 방장이 "리매치" 또는 다같이 로비로
+
+## WebSocket 메시지
+
+`backend/app/ws/protocol.py` 참고.
+
+- 클라 → 서버: `chat`, `start_game` (방장), `skip`, `rematch` (방장, 종료 후)
+- 서버 → 클라: `room_state`, `player_join/leave`, `chat`, `game_start`, `round_start`, `hint`, `correct`, `round_end`, `score_update`, `skip_progress`, `game_over`, `error`
+- 닫기 코드: `4404` 방 없음, `4413` 방 만석, `4423` 시작된 게임 (sealed)
+
+## 데이터 모델 요약
+
+- `users` — 게스트 닉네임 (+ 추후 소셜)
+- `rooms` — 방 설정 + `code` (UNIQUE 6자) + `is_public` + `status` (`waiting`/`playing`/`ended`)
+- `room_members` — 방별 점수
+- `questions` — `answer_normalized` + `accepted_answers[]` 로 관용적 정답 매칭, `difficulty 1~5`, `category` 태그
+
+## Redis 키
+
+- `room:{id}:answered:{round}` — 첫 정답 락 (`SET NX EX`)
+- `room:{id}:state` — Hash 라운드 스냅샷 (다중 워커 대비)
+- `room:{id}:scores` — ZSet 점수 미러

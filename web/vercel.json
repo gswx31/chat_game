@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "comment": "REST API → Fly.io backend. CHANGE the host below to your actual Fly app domain.",
+      "source": "/api/:path*",
+      "destination": "https://chatgame-backend.fly.dev/:path*"
+    },
+    {
+      "comment": "SPA fallback — every other route serves index.html",
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

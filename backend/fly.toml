@@ -1,0 +1,27 @@
+# See https://fly.io/docs/reference/configuration/
+# Change `app` to whatever you want; the Fly app name must be globally unique.
+
+app = "chatgame-backend"
+primary_region = "nrt"   # Tokyo — closest to Korea on free tier
+
+[build]
+
+[deploy]
+  # Runs once per release before traffic is switched. Migrations + idempotent seed.
+  release_command = "sh -c 'alembic upgrade head && python -m scripts.import_questions scripts/questions_seed.csv'"
+
+[env]
+  APP_ENV = "production"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Keep at least one machine running so WebSocket connections aren't dropped
+  # by cold starts. Free tier covers 3 shared-cpu-1x VMs continuously.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
