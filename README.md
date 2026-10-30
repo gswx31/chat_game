@@ -17,8 +17,9 @@
 - `/j/{CODE}` 짧은 링크 → 카톡으로 보내면 누르자마자 들어옴
 - 마지막 닉네임 기억, 모바일 가로폭 대응
 
-Sealed-room (끄투 룰):
-- **게임 시작 후 신규 입장 X, 재입장 X**. 네트워크 끊김도 마찬가지 — 한 번 나가면 끝.
+입장 규칙:
+- **게임 중에도 방 코드로 입장·재입장 가능** (신규 입장자는 0점으로 시작, 정원 한도 안에서). 네트워크가 끊겨도 유예 시간 안에 돌아오면 자리가 유지됨.
+- 방장이 강퇴하면 24시간 동안 재입장 불가.
 - 빈 방은 자동 종료.
 - 방장이 **리매치** 누르면 같은 방에서 다시 모집 시작 (점수 0부터, 입장 다시 가능).
 
@@ -41,15 +42,15 @@ chatGame/
 | 모노레포 구조 정리 | ✅ |
 | Postgres + Redis (compose) | ✅ |
 | FastAPI 부트, JWT 게스트 로그인, 방 CRUD | ✅ |
-| 새 문제 테이블 + 75+ 문항 시드 (8 카테고리) | ✅ |
+| 문제 401문항 (8 카테고리) — `seed_data.py` 가 단일 출처, 배포 때 자동 동기화 | ✅ |
 | 방 코드 + 공개/비공개 + by-code 입장 + /j/CODE | ✅ |
 | WebSocket 게임 엔진 (서버 타이머, 첫정답 Redis 락, 점수, 힌트, 스킵) | ✅ |
 | 결과 화면 + 리매치 | ✅ |
-| Sealed-after-start + 빈방 자동 종료 | ✅ |
+| 빈방 자동 종료 | ✅ |
 | Alembic 마이그레이션 (`create_all` 폐기) | ✅ |
 | 모바일 가로폭 대응 | ✅ |
 | Redis pub/sub fanout (다중 워커) | ⏳ |
-| Flutter 모바일 신규 백엔드 연동 | ⏳ |
+| Flutter 모바일 신규 백엔드 연동 (코드·빌드 완료, 실기기 검증 전) | ✅ |
 | 소셜 로그인 (Google/Kakao) | ⏳ |
 
 ## 로컬 실행
@@ -78,8 +79,8 @@ copy .env.example .env
 # 스키마 적용 (Alembic, 첫 실행 + 변경 시마다)
 alembic upgrade head
 
-# 문제 시드 (75+ 문항 추천)
-python -m scripts.import_questions scripts/questions_seed.csv
+# 문제 동기화 (app/questions/seed_data.py 와 DB를 똑같이 맞춤. 몇 번 실행해도 안전)
+python -m scripts.sync_questions
 
 # 서버 실행
 uvicorn app.main:app --reload --port 8000

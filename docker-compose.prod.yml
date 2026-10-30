@@ -1,0 +1,81 @@
+# 친구 시험용 "내 PC가 서버" 구성. 개발용 docker-compose.yml 과는 프로젝트·볼륨이 완전히 별개다.
+#
+#   docker compose -f docker-compose.prod.yml --env-file prod.env up -d --build
+#
+# - 비밀값(SECRET_KEY, POSTGRES_PASSWORD)은 prod.env 에 있다 (git 에 안 올라감).
+# - DB·Redis 는 포트를 밖으로 열지 않는다. 백엔드만 127.0.0.1:8000 에 열리고,
+#   외부에는 ngrok 이 이 포트 하나만 HTTPS 로 연결해 준다.
+# - 시작할 때마다 마이그레이션 + 문제 동기화(seed_data.py)를 먼저 하고 서버를 띄운다.
+name: chatgame-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chatgame
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?prod.env 에 POSTGRES_PASSWORD 가 없어요}
+      POSTGRES_DB: chatgame
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatgame -d chatgame"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?prod.env 에 SECRET_KEY 가 없어요}
+      DATABASE_URL: postgresql+asyncpg://chatgame:${POSTGRES_PASSWORD}@postgres:5432/chatgame
+      REDIS_URL: redis://redis:6379/0
+      # 같은 주소에서 웹 게임도 내려준다 (web/dist 를 아래 볼륨으로 마운트). 같은 서버라서
+      # 앱과 웹 사용자가 같은 방에서 같이 할 수 있고, CORS 도 필요 없다.
+      CORS_ORIGINS: ""
+      WEB_DIST_DIR: /app/web_dist
+    volumes:
+      - ./web/dist:/app/web_dist:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        python -m scripts.sync_questions &&
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+        --proxy-headers --forwarded-allow-ips '*'
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+
+volumes:
+  pgdata:
+  redisdata:

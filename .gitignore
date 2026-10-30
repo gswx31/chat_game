@@ -12,6 +12,10 @@ app.*.map.json
 mobile/android/app/debug
 mobile/android/app/profile
 mobile/android/app/release
+# Android 릴리스 서명 — 절대 커밋 금지 (잃어버리면 같은 앱으로 업데이트 불가, 백업 필수)
+mobile/android/key.properties
+*.jks
+*.keystore
 
 # --- Python (backend/) ---
 __pycache__/
@@ -47,3 +51,13 @@ redis-data/
 *.swp
 .history
 *.log
+
+# --- 자동매매 비밀키/캐시 (crewai_demo) ---
+crewai_demo/secrets/
+crewai_demo/cache/
+crewai_demo/*.log
+crewai_demo/picks_log.csv
+*.env
+
+# scratch builds of the web client
+web/.dist-*/

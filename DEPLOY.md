@@ -86,7 +86,8 @@ flyctl secrets set CORS_ORIGINS="https://sangbae.vercel.app,http://localhost:517
 flyctl deploy --app 여러분의앱이름
 ```
 - 빌드 + 푸시 (1~3분)
-- `release_command` 가 자동으로 `alembic upgrade head` + 76문항 시드 실행
+- `release_command` 가 자동으로 `alembic upgrade head` + 문제 동기화(`scripts.sync_questions`) 실행
+  (`app/questions/seed_data.py` 의 401문항이 DB와 같아지도록 추가·수정·삭제. 문제를 고치고 다시 배포하면 반영됨)
 - 헬스체크 통과 후 traffic 스위치
 
 배포 끝나면 도메인이 나옵니다: `https://여러분의앱이름.fly.dev`. 
@@ -95,7 +96,7 @@ flyctl deploy --app 여러분의앱이름
 curl https://여러분의앱이름.fly.dev/healthz
 # {"status":"ok"}
 curl https://여러분의앱이름.fly.dev/questions/count
-# {"count":76}
+# {"count":401}
 ```
 
 ---
