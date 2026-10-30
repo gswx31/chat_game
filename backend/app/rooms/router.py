@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user_id
 from app.db.models import QuestionSet, Room, RoomMember
 from app.db.session import get_session
 from app.rooms import code as code_util
+from app.rooms.presence import live_count
 from app.rooms.schemas import RoomCreate, RoomDetail, RoomListItem
 
 router = APIRouter()
@@ -25,21 +26,12 @@ async def _allocate_code(db: AsyncSession) -> str:
 
 @router.get("", response_model=list[RoomListItem])
 async def list_rooms(db: AsyncSession = Depends(get_session)) -> list[RoomListItem]:
+    """Public rooms that somebody is actually in. A room with nobody in it is a leftover
+    (everyone left, or the owner never connected): hidden here at once, and the background
+    sweep in ``app/rooms/cleanup.py`` deletes it shortly after."""
     rows = await db.execute(
-        select(
-            Room.id,
-            Room.code,
-            Room.name,
-            Room.is_public,
-            Room.max_players,
-            Room.status,
-            Room.win_score,
-            Room.created_at,
-            func.count(RoomMember.id).label("player_count"),
-        )
-        .outerjoin(RoomMember, RoomMember.room_id == Room.id)
+        select(Room)
         .where(Room.status == "waiting", Room.is_public.is_(True))
-        .group_by(Room.id)
         .order_by(Room.created_at.desc())
     )
     return [
@@ -52,9 +44,10 @@ async def list_rooms(db: AsyncSession = Depends(get_session)) -> list[RoomListIt
             status=r.status,
             win_score=r.win_score,
             created_at=r.created_at,
-            player_count=r.player_count,
+            player_count=count,
         )
-        for r in rows
+        for r in rows.scalars()
+        if (count := live_count(r.id)) > 0
     ]
 
 
@@ -107,10 +100,7 @@ async def get_room_by_code(
     room = await db.scalar(select(Room).where(Room.code == code))
     if not room:
         raise HTTPException(404, "Room not found")
-    count = await db.scalar(
-        select(func.count(RoomMember.id)).where(RoomMember.room_id == room.id)
-    )
-    return _to_detail(room, player_count=count or 0)
+    return _to_detail(room, player_count=live_count(room.id))
 
 
 @router.get("/{room_id}", response_model=RoomDetail)
@@ -118,10 +108,7 @@ async def get_room(room_id: str, db: AsyncSession = Depends(get_session)) -> Roo
     room = await db.get(Room, room_id)
     if not room:
         raise HTTPException(404, "Room not found")
-    count = await db.scalar(
-        select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)
-    )
-    return _to_detail(room, player_count=count or 0)
+    return _to_detail(room, player_count=live_count(room_id))
 
 
 def _to_detail(room: Room, player_count: int) -> RoomDetail:

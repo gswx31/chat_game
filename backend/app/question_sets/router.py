@@ -5,7 +5,7 @@ Public flow:
   GET   /question-sets/my         — my sets (all, incl. private)
   GET   /question-sets/browse     — public sets: search + theme filter + pagination
   GET   /question-sets/popular    — top 20 by play_count
-  GET   /question-sets/themes     — available theme list
+  GET   /question-sets/themes     — theme list (= the room categories, /questions/categories)
   GET   /question-sets/by-code/{code}   — full detail by share code (download)
   GET   /question-sets/{id}       — full detail by id (owner only for private)
   PUT   /question-sets/{id}       — update metadata (owner only)
@@ -30,6 +30,7 @@ from app.db.models import QuestionSet, QuestionSetItem, User
 from app.db.session import get_session
 from app.question_sets import code as code_util
 from app.question_sets.schemas import (
+    LEGACY_CATEGORIES,
     QuestionItemCreate,
     QuestionItemOut,
     QuestionItemUpdate,
@@ -37,8 +38,8 @@ from app.question_sets.schemas import (
     QuestionSetCreate,
     QuestionSetOut,
     QuestionSetUpdate,
-    THEMES,
 )
+from app.questions.bank import CATEGORIES
 from app.questions.normalize import normalize_answer
 
 router = APIRouter()
@@ -109,7 +110,7 @@ def _set_to_out(qs: QuestionSet, creator_nickname: str) -> QuestionSetOut:
 
 @router.get("/themes")
 async def list_themes() -> list[str]:
-    return THEMES
+    return CATEGORIES
 
 
 # ── 생성 ──────────────────────────────────────────────────────────────
@@ -188,7 +189,7 @@ async def my_question_sets(
 @router.get("/browse", response_model=list[QuestionSetBrief])
 async def browse_question_sets(
     q: str | None = Query(default=None, description="이름 검색"),
-    tag: str | None = Query(default=None, description="테마 필터 (예: 역사)"),
+    tag: str | None = Query(default=None, description="테마 필터 (예: 한국사)"),
     sort: str = Query(default="popular", description="popular | recent"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=50),
@@ -207,6 +208,7 @@ async def browse_question_sets(
     if q:
         stmt = stmt.where(QuestionSet.name.ilike(f"%{q}%"))
     if tag:
+        tag = LEGACY_CATEGORIES.get(tag, tag)  # filter chips of older app builds
         stmt = stmt.where(QuestionSet.tags.any(tag))  # type: ignore[arg-type]
 
     order = (
@@ -321,13 +323,65 @@ async def delete_question_set(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_session),
 ) -> None:
-    qs = await db.get(QuestionSet, set_id)
-    if not qs:
-        raise HTTPException(404, "맵을 찾을 수 없어요")
-    if qs.creator_id != user_id:
-        raise HTTPException(403, "내 맵만 삭제할 수 있어요")
+    qs = await _require_owner(set_id, user_id, db)
     await db.delete(qs)
     await db.commit()
+
+
+# ── 맵 복제 (다운로드) ────────────────────────────────────────────────
+
+
+@router.post("/{set_id}/clone", response_model=QuestionSetOut, status_code=201)
+async def clone_question_set(
+    set_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_session),
+) -> QuestionSetOut:
+    """다른 사용자의 공개 맵을 내 컬렉션으로 복제합니다."""
+    qs = await db.scalar(
+        select(QuestionSet)
+        .where(QuestionSet.id == set_id)
+        .options(selectinload(QuestionSet.items), selectinload(QuestionSet.creator))
+    )
+    if not qs:
+        raise HTTPException(404, "맵을 찾을 수 없어요")
+    if not qs.is_public and qs.creator_id != user_id:
+        raise HTTPException(403, "비공개 맵이에요")
+
+    code = await _allocate_code(db)
+    clone = QuestionSet(
+        code=code,
+        name=qs.name,
+        description=qs.description,
+        creator_id=user_id,
+        is_public=False,
+        tags=list(qs.tags or []),
+    )
+    db.add(clone)
+    await db.flush()
+
+    for item in (qs.items or []):
+        db.add(
+            QuestionSetItem(
+                set_id=clone.id,
+                prompt=item.prompt,
+                answer=item.answer,
+                answer_normalized=item.answer_normalized,
+                accepted_answers=list(item.accepted_answers or []),
+                category=item.category,
+                difficulty=item.difficulty,
+                hint=item.hint,
+                order=item.order,
+            )
+        )
+
+    await db.commit()
+    result = await db.scalar(
+        select(QuestionSet)
+        .where(QuestionSet.id == clone.id)
+        .options(selectinload(QuestionSet.items), selectinload(QuestionSet.creator))
+    )
+    return _set_to_out(result, result.creator.nickname)
 
 
 # ── 문제 추가 / 수정 / 삭제 ──────────────────────────────────────────

@@ -7,10 +7,12 @@ Client -> Server
 ----------------
 - ``{ "type": "chat", "text": "..." }``
   Free chat. Server also tests the text against current question's answer.
+  The text "스킵" (or its 초성 "ㅅㅋ") is not an answer but a vote to skip the question.
 - ``{ "type": "start_game" }``
   Owner only; transitions room from waiting -> playing.
 - ``{ "type": "skip" }``
-  Vote to skip current round.
+  Vote to skip current round. It passes when MORE than half of the room voted (two players
+  must both agree).
 
 Server -> Client
 ----------------

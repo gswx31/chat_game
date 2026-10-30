@@ -7,11 +7,11 @@ from app.auth.schemas import (
     MeResponse,
     ProfileUpdateRequest,
     TokenResponse,
-    UpsertRequest,
 )
 from app.core.security import create_access_token, get_current_user_id
 from app.db.models import User
 from app.db.session import get_session
+from app.safety.suspension import is_suspended
 
 router = APIRouter()
 
@@ -35,51 +35,29 @@ def _to_me(user: User) -> MeResponse:
     )
 
 
-@router.post("/upsert", response_model=TokenResponse)
-async def upsert_user(
-    body: UpsertRequest,
-    db: AsyncSession = Depends(get_session),
-) -> TokenResponse:
-    """Find-or-create a User by firebase_uid.
-    Guaranteed to return the same user_id for the same Firebase account
-    across every app launch, fixing the session-ID drift bug."""
-    user = await db.scalar(
-        select(User).where(User.firebase_uid == body.firebase_uid)
-    )
-    if user:
-        # Sync any changed profile fields from Firebase
-        user.nickname = body.nickname.strip() or user.nickname
-        if body.email is not None:
-            user.email = body.email
-        if body.photo_url is not None:
-            user.photo_url = body.photo_url
-    else:
-        user = User(
-            firebase_uid=body.firebase_uid,
-            nickname=body.nickname.strip() or "Guest",
-            email=body.email,
-            photo_url=body.photo_url,
-            is_guest=body.is_guest,
-        )
-        db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return _to_token(user)
-
-
 @router.post("/guest", response_model=TokenResponse)
 async def guest_login(
     body: GuestLoginRequest,
     db: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
-    """Legacy: throwaway guest row with no firebase_uid. Kept for compatibility."""
-    nickname = body.nickname.strip()
-    if not nickname:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nickname required")
-    user = User(nickname=nickname, is_guest=True)
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
+    """device_id로 게스트 계정 find-or-create.
+    같은 기기에서 항상 같은 user_id를 반환한다.
+    firebase_uid 컬럼을 device_id 저장소로 재사용."""
+    user = await db.scalar(
+        select(User).where(User.firebase_uid == body.device_id)
+    )
+    if not user:
+        nickname = f"Guest_{body.device_id[:8]}"
+        user = User(
+            firebase_uid=body.device_id,
+            nickname=nickname,
+            is_guest=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    if is_suspended(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "이용이 제한된 계정이에요")
     return _to_token(user)
 
 
@@ -100,8 +78,7 @@ async def update_me(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
-    """Update nickname / photo_url. Returns a fresh JWT so the new nickname
-    is reflected in WebSocket sessions immediately."""
+    """닉네임 변경 후 새 JWT 발급 — WS 세션에 즉시 반영된다."""
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")

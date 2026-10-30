@@ -8,7 +8,7 @@ primary_region = "nrt"   # Tokyo — closest to Korea on free tier
 
 [deploy]
   # Runs once per release before traffic is switched. Migrations + idempotent seed.
-  release_command = "sh -c 'alembic upgrade head && python -m scripts.import_questions scripts/questions_seed.csv'"
+  release_command = "sh -c 'alembic upgrade head && python -m scripts.sync_questions'"
 
 [env]
   APP_ENV = "production"

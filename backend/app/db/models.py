@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -37,6 +38,10 @@ class User(Base):
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_guest: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # Set by an operator (scripts/moderation.py) after a report; None = in good standing.
+    suspended_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Question(Base):
@@ -111,7 +116,7 @@ class Room(Base):
     code: Mapped[str] = mapped_column(String(6), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(60), nullable=False)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     max_players: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     win_score: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
     round_seconds: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
@@ -138,9 +143,75 @@ class RoomMember(Base):
     __table_args__ = (UniqueConstraint("room_id", "user_id", name="uq_room_user"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     room: Mapped[Room] = relationship(back_populates="members")
+
+
+class GameResult(Base):
+    """One row per player per finished game -- the data behind "내 전적".
+
+    Deliberately not tied to ``rooms``: idle rooms are deleted 30 minutes after a game
+    (taking their ``room_members`` with them) and a rematch reuses the room and resets
+    its scores, so neither can serve as history.
+    """
+
+    __tablename__ = "game_results"
+    __table_args__ = (Index("ix_game_results_user_played", "user_id", "played_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    played_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    room_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    room_code: Mapped[str] = mapped_column(String(6), nullable=False, default="")
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    player_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    win_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    winner_nickname: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class Report(Base):
+    """A player's report of another player's behaviour (Google Play UGC policy).
+
+    Chat is not stored, so the reporter's client sends the offending line along with the
+    report; ``target_nickname`` is a snapshot because nicknames can be changed afterwards.
+    ``status``: open -> actioned (operator suspended the target) | dismissed.
+    """
+
+    __tablename__ = "reports"
+    __table_args__ = (
+        Index("ix_reports_status_created", "status", "created_at"),
+        Index("ix_reports_reporter_created", "reporter_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reporter_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    target_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    target_nickname: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason: Mapped[str] = mapped_column(String(20), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    message_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    room_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserBlock(Base):
+    """``blocker`` no longer sees ``blocked``'s chat lines."""
+
+    __tablename__ = "user_blocks"
+    __table_args__ = (UniqueConstraint("blocker_id", "blocked_id", name="uq_user_block"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    blocker_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    blocked_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

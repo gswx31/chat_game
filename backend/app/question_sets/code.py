@@ -1,13 +1,12 @@
 """8-character share code generator for question sets."""
-import random
-import string
+import secrets
 
 # Exclude visually ambiguous characters
 _CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
 def generate_code() -> str:
-    return "".join(random.choices(_CHARS, k=8))
+    return "".join(secrets.choice(_CHARS) for _ in range(8))
 
 
 def normalize(code: str) -> str:

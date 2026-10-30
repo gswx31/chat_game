@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import WebSocket
@@ -30,8 +31,19 @@ class RoomManager:
             if not self._rooms.get(room_id):
                 self._rooms.pop(room_id, None)
 
-    async def broadcast(self, room_id: str, message: dict[str, Any]) -> None:
-        sockets = list(self._rooms.get(room_id, {}).values())
+    async def broadcast(
+        self,
+        room_id: str,
+        message: dict[str, Any],
+        skip_if: Callable[[str], bool] | None = None,
+    ) -> None:
+        """Send to everyone in the room, except recipients (by user id) for whom ``skip_if``
+        is true — used to keep a blocked player's chat lines away from whoever blocked them."""
+        sockets = [
+            ws
+            for uid, ws in list(self._rooms.get(room_id, {}).items())
+            if skip_if is None or not skip_if(uid)
+        ]
         for ws in sockets:
             try:
                 await ws.send_json(message)

@@ -1,21 +1,33 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-THEMES = [
-    "일반상식",
-    "역사",
-    "과학",
-    "사회",
-    "지리",
-    "문학",
-    "예술",
-    "스포츠",
-    "IT",
-    "수학",
-    "영어",
-    "기타",
-]
+from app.questions.bank import CATEGORIES
+
+# Maps use the room categories (bank.CATEGORIES) for both question categories and map tags.
+# Installed copies of the app still offer the old map-only list, so those names are
+# translated to the closest room category (the bank files literature under 예술).
+LEGACY_CATEGORIES = {
+    "역사": "한국사",
+    "문학": "예술",
+    "문화": "예술",
+    "수학": "과학",
+    "일반": "일반상식",
+    "기타": "일반상식",
+}
+
+
+def canonical_category(name: str) -> str:
+    name = name.strip()
+    name = LEGACY_CATEGORIES.get(name, name)
+    if name not in CATEGORIES:
+        raise ValueError(f"없는 카테고리예요: {name}")
+    return name
+
+
+def canonical_tags(tags: list[str]) -> list[str]:
+    # translating can turn two tags into one ('역사' + '한국사')
+    return list(dict.fromkeys(canonical_category(t) for t in tags))
 
 
 # ---- QuestionSetItem ----
@@ -29,6 +41,11 @@ class QuestionItemCreate(BaseModel):
     difficulty: int = Field(default=2, ge=1, le=5)
     hint: str | None = Field(default=None, max_length=120)
 
+    @field_validator("category")
+    @classmethod
+    def _known_category(cls, v: str) -> str:
+        return canonical_category(v)
+
 
 class QuestionItemUpdate(BaseModel):
     prompt: str | None = Field(default=None, min_length=1, max_length=500)
@@ -37,6 +54,11 @@ class QuestionItemUpdate(BaseModel):
     category: str | None = Field(default=None, min_length=1, max_length=40)
     difficulty: int | None = Field(default=None, ge=1, le=5)
     hint: str | None = None
+
+    @field_validator("category")
+    @classmethod
+    def _known_category(cls, v: str | None) -> str | None:
+        return None if v is None else canonical_category(v)
 
 
 class QuestionItemOut(BaseModel):
@@ -61,12 +83,22 @@ class QuestionSetCreate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=10)
     items: list[QuestionItemCreate] = Field(default_factory=list)
 
+    @field_validator("tags")
+    @classmethod
+    def _known_tags(cls, v: list[str]) -> list[str]:
+        return canonical_tags(v)
+
 
 class QuestionSetUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     description: str | None = Field(default=None, max_length=300)
     is_public: bool | None = None
     tags: list[str] | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def _known_tags(cls, v: list[str] | None) -> list[str] | None:
+        return None if v is None else canonical_tags(v)
 
 
 class QuestionSetBrief(BaseModel):
