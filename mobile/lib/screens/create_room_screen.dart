@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../core/api_exception.dart';
 import '../core/app_theme.dart';
 import '../core/router.dart';
+import '../providers/question_set_provider.dart';
 import '../providers/room_provider.dart';
 import '../services/room_service.dart';
 
@@ -24,6 +26,12 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   final Set<String> _selectedCategories = {};
   bool _loading = false;
 
+  String _roomErrorMessage(Object e) {
+    // ApiException.toString() 은 이미 사용자용 문장이다 (네트워크/401/422/서버 메시지).
+    if (e is ApiException) return e.message;
+    return '방을 만들 수 없어요. 잠시 후 다시 시도해주세요.';
+  }
+
   Future<void> _createRoom() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
@@ -40,15 +48,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       );
       if (mounted) context.go(Routes.lobby(room.id));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('방 생성 실패: $e'),
-          backgroundColor: AppColors.danger,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10)),
-        ));
-      }
+      if (mounted) AppSnackBar.show(context, _roomErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -57,13 +57,13 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   @override
   Widget build(BuildContext context) {
     final catsAsync = ref.watch(categoriesProvider);
-    final qSetsAsync = ref.watch(myQuestionSetsProvider);
+    final qSetsAsync = ref.watch(myQSetsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('방 만들기')),
+      appBar: const GradientAppBar(title: '방 만들기'),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
           child: GradientButton(
             label: '방 만들기',
             icon: Icons.meeting_room_rounded,
@@ -80,209 +80,166 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Room name
-                  _SectionLabel('방 이름'),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    decoration: const InputDecoration(
-                      hintText: '예: 우리반 퀴즈왕',
-                      prefixIcon: Icon(Icons.meeting_room_rounded,
-                          color: AppColors.primary),
+                  // ── 방 이름 ──────────────────────────────────────
+                  _FormSection(
+                    icon: Icons.meeting_room_rounded,
+                    iconColor: const Color(0xFF6C63FF),
+                    title: '방 이름',
+                    child: TextFormField(
+                      decoration: const InputDecoration(
+                        hintText: '예: 우리반 퀴즈왕',
+                        prefixIcon: Icon(Icons.edit_outlined,
+                            color: AppColors.primary, size: 20),
+                      ),
+                      maxLength: 40,
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? '방 이름을 입력해주세요.' : null,
+                      onSaved: (v) => _roomName = v ?? '',
                     ),
-                    maxLength: 40,
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? '방 이름을 입력해주세요.' : null,
-                    onSaved: (v) => _roomName = v ?? '',
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
-                  // Settings grid
-                  _SectionLabel('게임 설정'),
-                  const SizedBox(height: 12),
-                  _SettingRow(
-                    label: '목표 점수',
-                    value: '$_winScore점',
-                    child: Slider(
-                      value: _winScore.toDouble(),
-                      min: 5,
-                      max: 100,
-                      divisions: 19,
-                      label: '$_winScore점',
-                      activeColor: AppColors.primary,
-                      onChanged: (v) => setState(() => _winScore = v.round()),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _SettingRow(
-                    label: '라운드 시간',
-                    value: '${_roundSeconds}초',
-                    child: Slider(
-                      value: _roundSeconds.toDouble(),
-                      min: 10,
-                      max: 120,
-                      divisions: 11,
-                      label: '${_roundSeconds}초',
-                      activeColor: AppColors.primary,
-                      onChanged: (v) =>
-                          setState(() => _roundSeconds = v.round()),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _SettingRow(
-                    label: '최대 인원',
-                    value: '$_maxPlayers명',
-                    child: Slider(
-                      value: _maxPlayers.toDouble(),
-                      min: 2,
-                      max: 200,
-                      divisions: 198,
-                      label: '$_maxPlayers명',
-                      activeColor: AppColors.primary,
-                      onChanged: (v) =>
-                          setState(() => _maxPlayers = v.round()),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Public toggle
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: SwitchListTile(
-                      title: const Text('공개 방',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle:
-                          const Text('로비 목록에 표시됩니다', style: TextStyle(fontSize: 12)),
-                      value: _isPublic,
-                      onChanged: (v) => setState(() => _isPublic = v),
-                      activeColor: AppColors.primary,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 4),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Custom question set
-                  _SectionLabel('커스텀 질문 세트 (선택)'),
-                  const SizedBox(height: 4),
-                  const Text('내가 만든 질문 세트로 게임하기',
-                      style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                  const SizedBox(height: 10),
-                  qSetsAsync.when(
-                    loading: () => const SizedBox(
-                        height: 40,
-                        child: Center(
-                            child: CircularProgressIndicator(
-                                color: AppColors.primary, strokeWidth: 2))),
-                    error: (_, __) => const SizedBox.shrink(),
-                    data: (sets) {
-                      if (sets.isEmpty) {
-                        return const Text('아직 만든 질문 세트가 없습니다.',
-                            style: TextStyle(
-                                color: AppColors.textSecondary, fontSize: 13));
-                      }
-                      return DropdownButtonFormField<String?>(
-                        value: _selectedQuestionSetId,
-                        decoration: InputDecoration(
-                          hintText: '기본 질문 풀 사용',
-                          prefixIcon: const Icon(Icons.quiz_rounded,
-                              color: AppColors.primary),
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide:
-                                  BorderSide(color: Colors.grey.shade200)),
-                          filled: true,
-                          fillColor: Colors.white,
+                  // ── 게임 설정 ─────────────────────────────────────
+                  _FormSection(
+                    icon: Icons.tune_rounded,
+                    iconColor: const Color(0xFF00C896),
+                    title: '게임 설정',
+                    child: Column(
+                      children: [
+                        _SettingSlider(
+                          icon: Icons.emoji_events_rounded,
+                          iconColor: const Color(0xFFF59E0B),
+                          label: '목표 점수',
+                          value: '$_winScore점',
+                          slider: Slider(
+                            value: _winScore.toDouble(),
+                            min: 5,
+                            max: 100,
+                            divisions: 19,
+                            label: '$_winScore점',
+                            onChanged: (v) =>
+                                setState(() => _winScore = v.round()),
+                          ),
                         ),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('기본 질문 풀 사용'),
+                        const SizedBox(height: 10),
+                        _SettingSlider(
+                          icon: Icons.timer_outlined,
+                          iconColor: const Color(0xFF6C63FF),
+                          label: '라운드 시간',
+                          value: '$_roundSeconds초',
+                          slider: Slider(
+                            value: _roundSeconds.toDouble(),
+                            min: 10,
+                            max: 120,
+                            divisions: 11,
+                            label: '$_roundSeconds초',
+                            onChanged: (v) =>
+                                setState(() => _roundSeconds = v.round()),
                           ),
-                          ...sets.map((s) => DropdownMenuItem<String?>(
-                                value: s.id,
-                                child: Text(
-                                    '${s.title} (${s.questionCount}문항)',
-                                    overflow: TextOverflow.ellipsis),
-                              )),
-                        ],
-                        onChanged: (v) =>
-                            setState(() => _selectedQuestionSetId = v),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Categories (disabled when question set is selected)
-                  Row(
-                    children: [
-                      const Expanded(child: _SectionLabel('카테고리')),
-                      if (_selectedCategories.isNotEmpty)
-                        Text(
-                          '${_selectedCategories.length}개 선택',
-                          style: const TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text('선택 안 하면 전체 카테고리',
-                      style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                  const SizedBox(height: 10),
-                  catsAsync.when(
-                    loading: () => const SizedBox(
-                        height: 40,
-                        child: Center(
-                            child: CircularProgressIndicator(
-                                color: AppColors.primary, strokeWidth: 2))),
-                    error: (e, _) => Text(
-                      '카테고리를 불러오지 못했습니다: $e',
-                      style: const TextStyle(
-                          color: AppColors.danger, fontSize: 12),
+                        const SizedBox(height: 10),
+                        _SettingSlider(
+                          icon: Icons.people_rounded,
+                          iconColor: const Color(0xFF0077B6),
+                          label: '최대 인원',
+                          value: '$_maxPlayers명',
+                          slider: Slider(
+                            value: _maxPlayers.toDouble(),
+                            min: 2,
+                            max: 200,
+                            divisions: 198,
+                            label: '$_maxPlayers명',
+                            onChanged: (v) =>
+                                setState(() => _maxPlayers = v.round()),
+                          ),
+                        ),
+                      ],
                     ),
-                    data: (cats) => Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: cats.map((c) {
-                        final on = _selectedCategories.contains(c);
-                        return FilterChip(
-                          label: Text(c),
-                          selected: on,
-                          onSelected: (v) => setState(() {
-                            if (v) {
-                              _selectedCategories.add(c);
-                            } else {
-                              _selectedCategories.remove(c);
-                            }
-                          }),
-                          selectedColor: AppColors.primary.withOpacity(0.15),
-                          checkmarkColor: AppColors.primary,
-                          labelStyle: TextStyle(
-                            color: on
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
-                            fontWeight:
-                                on ? FontWeight.w700 : FontWeight.normal,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── 공개 여부 ─────────────────────────────────────
+                  _PublicToggle(
+                    value: _isPublic,
+                    onChanged: (v) => setState(() => _isPublic = v),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── 커스텀 맵 선택 ─────────────────────────────────
+                  _FormSection(
+                    icon: Icons.map_rounded,
+                    iconColor: const Color(0xFF7C3AED),
+                    title: '커스텀 맵 (선택)',
+                    subtitle: '내가 만든 맵으로 게임하기',
+                    child: qSetsAsync.when(
+                      loading: () => const _SmallLoader(),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (sets) {
+                        if (sets.isEmpty) {
+                          return const _EmptyHint(
+                            icon: Icons.map_outlined,
+                            text: '아직 만든 맵이 없어요. 설정에서 만들 수 있어요.',
+                          );
+                        }
+                        return DropdownButtonFormField<String?>(
+                          initialValue: _selectedQuestionSetId,
+                          decoration: const InputDecoration(
+                            hintText: '기본 문제 풀 사용',
+                            prefixIcon: Icon(Icons.quiz_rounded,
+                                color: AppColors.primary),
                           ),
-                          side: BorderSide(
-                            color: on
-                                ? AppColors.primary
-                                : Colors.grey.shade300,
-                          ),
-                          backgroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 2),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('기본 문제 풀 사용'),
+                            ),
+                            ...sets.map((s) => DropdownMenuItem<String?>(
+                                  value: s.id,
+                                  child: Text(
+                                      '${s.name} (${s.itemCount}문항)',
+                                      overflow: TextOverflow.ellipsis),
+                                )),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _selectedQuestionSetId = v),
                         );
-                      }).toList(),
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── 카테고리 ──────────────────────────────────────
+                  _FormSection(
+                    icon: Icons.category_rounded,
+                    iconColor: const Color(0xFFEF4444),
+                    title: '카테고리',
+                    subtitle: '선택 안 하면 전체 카테고리 혼합',
+                    badge: _selectedCategories.isNotEmpty
+                        ? '${_selectedCategories.length}개 선택'
+                        : null,
+                    child: catsAsync.when(
+                      loading: () => const _SmallLoader(),
+                      error: (e, _) => Text('$e',
+                          style: const TextStyle(
+                              color: AppColors.danger, fontSize: 12)),
+                      data: (cats) => Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: cats.map((c) {
+                          final on = _selectedCategories.contains(c);
+                          return _CategoryChip(
+                            label: c,
+                            selected: on,
+                            onTap: () => setState(() {
+                              if (on) {
+                                _selectedCategories.remove(c);
+                              } else {
+                                _selectedCategories.add(c);
+                              }
+                            }),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ],
@@ -290,24 +247,28 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
             ),
           ),
 
-          // Loading overlay
+          // ── 로딩 오버레이 ──────────────────────────────────────────
           if (_loading)
             Container(
-              color: Colors.black26,
-              child: const Center(
-                child: Card(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(16))),
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: AppColors.primary),
-                        SizedBox(height: 16),
-                        Text('방을 만드는 중...'),
-                      ],
-                    ),
+              color: Colors.black.withValues(alpha: 0.35),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppShadows.card,
+                  ),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: AppColors.primary),
+                      SizedBox(height: 16),
+                      Text('방을 만드는 중...',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ],
                   ),
                 ),
               ),
@@ -318,28 +279,22 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel(this.text);
+// ── Form section card ─────────────────────────────────────────────────────
 
-  @override
-  Widget build(BuildContext context) {
-    return Text(text,
-        style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary));
-  }
-}
-
-class _SettingRow extends StatelessWidget {
-  final String label;
-  final String value;
+class _FormSection extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? subtitle;
+  final String? badge;
   final Widget child;
 
-  const _SettingRow({
-    required this.label,
-    required this.value,
+  const _FormSection({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    this.subtitle,
+    this.badge,
     required this.child,
   });
 
@@ -348,37 +303,227 @@ class _SettingRow extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: AppShadows.card,
       ),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                IconBox(icon: icon, color: iconColor, size: 32),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary)),
+                      if (subtitle != null)
+                        Text(subtitle!,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+                if (badge != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(badge!,
+                        style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Slider row ────────────────────────────────────────────────────────────
+
+class _SettingSlider extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+  final Widget slider;
+
+  const _SettingSlider({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+    required this.slider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      decoration: BoxDecoration(
+        color: AppColors.bg,
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Icon(icon, size: 16, color: iconColor),
+              const SizedBox(width: 7),
               Text(label,
                   style: const TextStyle(
                       fontWeight: FontWeight.w600,
+                      fontSize: 13,
                       color: AppColors.textPrimary)),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(value,
-                    style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13)),
-              ),
+              const Spacer(),
+              ValuePill(value),
             ],
           ),
-          child,
+          slider,
         ],
       ),
+    );
+  }
+}
+
+// ── Public toggle ─────────────────────────────────────────────────────────
+
+class _PublicToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const _PublicToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: AppShadows.card,
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(14, 6, 16, 6),
+        leading: IconBox(
+          icon: value ? Icons.public_rounded : Icons.lock_outline_rounded,
+          color: value ? const Color(0xFF0077B6) : const Color(0xFF6B7280),
+          size: 32,
+        ),
+        title: Text(
+          value ? '공개 방' : '비공개 방',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+        subtitle: Text(
+          value ? '로비 목록에 표시됩니다' : '코드를 알아야 입장 가능합니다',
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        trailing: Switch(
+          value: value,
+          onChanged: onChanged,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+    );
+  }
+}
+
+// ── Category chip ─────────────────────────────────────────────────────────
+
+class _CategoryChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CategoryChip(
+      {required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: selected ? AppColors.primary : const Color(0xFFE5E7EB),
+              width: 1.5),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  )
+                ]
+              : [],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+class _SmallLoader extends StatelessWidget {
+  const _SmallLoader();
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+        height: 36,
+        child: Center(
+          child: CircularProgressIndicator(
+              color: AppColors.primary, strokeWidth: 2),
+        ),
+      );
+}
+
+class _EmptyHint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _EmptyHint({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text,
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13)),
+        ),
+      ],
     );
   }
 }

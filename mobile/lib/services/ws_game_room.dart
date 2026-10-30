@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../core/api_config.dart';
+import 'api_service.dart';
+import 'auth_service.dart';
 
 // ── Value objects ─────────────────────────────────────────────────────────
 
@@ -112,12 +114,28 @@ class ChatMsg {
 
 // ── State ─────────────────────────────────────────────────────────────────
 
+/// Close codes the server uses to say "don't bother retrying".
+/// Mirrors `backend/app/ws/router.py`.
+const _kFatalCloseReasons = <int, String>{
+  4401: '로그인이 만료됐는데 다시 로그인하지 못했어요. 인터넷을 확인하고 다시 들어와 주세요',
+  4403: '방장에 의해 강퇴되었습니다',
+  4404: '방이 사라졌어요',
+  4413: '방 정원이 가득 찼어요',
+  4423: '이미 시작된 게임이라 입장할 수 없어요',
+};
+
 class WsGameRoomState {
   final bool connected;
+
+  /// Non-null once the server refused us for a reason retrying can't fix.
+  /// Reconnection stops and the UI shows this instead of a spinner.
+  final String? fatalError;
   final String status; // waiting / playing / ended
   final String? ownerId;
   final int winScore;
   final int roundSeconds;
+  final String roomName;
+  final String roomCode;
   final List<PlayerInfo> players;
   final RoundInfo? round;
   final List<ChatMsg> chat;
@@ -126,10 +144,13 @@ class WsGameRoomState {
 
   const WsGameRoomState({
     this.connected = false,
+    this.fatalError,
     this.status = 'waiting',
     this.ownerId,
     this.winScore = 20,
     this.roundSeconds = 30,
+    this.roomName = '',
+    this.roomCode = '',
     this.players = const [],
     this.round,
     this.chat = const [],
@@ -139,10 +160,13 @@ class WsGameRoomState {
 
   WsGameRoomState copyWith({
     bool? connected,
+    String? fatalError,
     String? status,
     String? ownerId,
     int? winScore,
     int? roundSeconds,
+    String? roomName,
+    String? roomCode,
     List<PlayerInfo>? players,
     RoundInfo? round,
     bool clearRound = false,
@@ -154,10 +178,13 @@ class WsGameRoomState {
   }) =>
       WsGameRoomState(
         connected: connected ?? this.connected,
+        fatalError: fatalError ?? this.fatalError,
         status: status ?? this.status,
         ownerId: ownerId ?? this.ownerId,
         winScore: winScore ?? this.winScore,
         roundSeconds: roundSeconds ?? this.roundSeconds,
+        roomName: roomName ?? this.roomName,
+        roomCode: roomCode ?? this.roomCode,
         players: players ?? this.players,
         round: clearRound ? null : (round ?? this.round),
         chat: chat ?? this.chat,
@@ -168,10 +195,25 @@ class WsGameRoomState {
 
 // ── Notifier ──────────────────────────────────────────────────────────────
 
-class WsGameRoom extends StateNotifier<WsGameRoomState> {
+class WsGameRoom extends StateNotifier<WsGameRoomState> with WidgetsBindingObserver {
   WsGameRoom({required this.roomId, required this.token})
       : super(const WsGameRoomState()) {
+    WidgetsBinding.instance.addObserver(this);
     _connect();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        !this.state.connected &&
+        !_disposed &&
+        !_fatal) {
+      _reconnectAttempts = 0;
+      _reconnectTimer?.cancel();
+      _sub?.cancel();
+      _channel?.sink.close();
+      _connect();
+    }
   }
 
   final String roomId;
@@ -182,12 +224,22 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
   bool _disposed = false;
+
+  /// Server told us retrying is pointless (kicked, room gone, bad token).
+  /// Distinct from [_disposed] so the screen stays alive to show why.
+  bool _fatal = false;
+
+  /// 4401(토큰 만료) 때 재로그인을 이미 한 번 시도했는지. 메시지가 정상 수신되면
+  /// 다시 false 로 돌아가서, 나중에 또 만료돼도 한 번은 자동 복구된다.
+  bool _reauthTried = false;
   int _chatSeq = 0;
 
   void _connect() {
     if (_disposed) return;
+    // 재연결은 생성 시점의 토큰이 아니라 "지금" 토큰으로 — 중간에 재로그인됐을 수 있다.
+    final currentToken = ApiService.instance.token ?? token;
     final uri = Uri.parse(
-      '${ApiConfig.wsBase}/ws/rooms/$roomId?token=${Uri.encodeComponent(token)}',
+      '${ApiConfig.wsBase}/ws/rooms/$roomId?token=${Uri.encodeComponent(currentToken)}',
     );
     try {
       _channel = WebSocketChannel.connect(uri);
@@ -195,6 +247,7 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
         (data) {
           final str = data is String ? data : utf8.decode(data as List<int>);
           _reconnectAttempts = 0; // reset on successful message
+          _reauthTried = false;
           if (!state.connected) state = state.copyWith(connected: true);
           try {
             _handle(json.decode(str) as Map<String, dynamic>);
@@ -204,6 +257,37 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
         },
         onDone: () {
           if (!mounted) return;
+          // Check *why* the socket closed. Blindly reconnecting meant a kicked
+          // player walked straight back in one second later, and an expired
+          // token span forever at the 30s ceiling.
+          final code = _channel?.closeCode ?? -1;
+          if (code == 4401 && !_reauthTried) {
+            // 토큰 만료 — 같은 기기 ID 로 재로그인해서 한 번만 다시 붙어본다.
+            _reauthTried = true;
+            _reconnectTimer?.cancel();
+            state = state.copyWith(connected: false);
+            AuthService.instance.signInAsGuest().then((ok) {
+              if (_disposed || !mounted) return;
+              if (ok) {
+                _connect();
+              } else {
+                _fatal = true;
+                state = state.copyWith(
+                  fatalError: _kFatalCloseReasons[4401],
+                );
+                _addSystem('🚫 ${_kFatalCloseReasons[4401]}');
+              }
+            });
+            return;
+          }
+          final reason = _kFatalCloseReasons[code];
+          if (reason != null) {
+            _fatal = true;
+            _reconnectTimer?.cancel();
+            state = state.copyWith(connected: false, fatalError: reason);
+            _addSystem('🚫 $reason');
+            return;
+          }
           state = state.copyWith(connected: false);
           _scheduleReconnect();
         },
@@ -224,7 +308,7 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
   }
 
   void _scheduleReconnect() {
-    if (_disposed) return;
+    if (_disposed || _fatal) return;
     final delay = Duration(seconds: min(1 << _reconnectAttempts, 30));
     _reconnectAttempts++;
     _reconnectTimer?.cancel();
@@ -249,10 +333,27 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
         _onRoomState(m);
         break;
       case 'player_join':
-        _addSystem('${m['nickname']} 님이 입장했습니다');
+        final joinUid = m['user_id'] as String?;
+        final joinNick = m['nickname'] as String? ?? '?';
+        if (joinUid != null && !state.players.any((p) => p.userId == joinUid)) {
+          state = state.copyWith(
+            players: [
+              ...state.players,
+              PlayerInfo(userId: joinUid, nickname: joinNick, score: 0),
+            ],
+          );
+        }
+        _addSystem('$joinNick 님이 입장했습니다');
         break;
       case 'player_leave':
-        _addSystem('${m['nickname']} 님이 나갔습니다');
+        final leaveUid = m['user_id'] as String?;
+        final leaveNick = m['nickname'] as String? ?? '?';
+        if (leaveUid != null) {
+          state = state.copyWith(
+            players: state.players.where((p) => p.userId != leaveUid).toList(),
+          );
+        }
+        _addSystem('$leaveNick 님이 나갔습니다');
         break;
       case 'chat':
         _addChat(
@@ -312,7 +413,14 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
         _addSystem('✅ ${m['nickname']} 님 정답! (${m['answer']})');
         break;
       case 'player_kicked':
-        _addSystem('🚫 ${m['nickname']} 님이 강퇴되었습니다');
+        final kickedUid = m['user_id'] as String?;
+        final kickedNick = m['nickname'] as String? ?? '?';
+        if (kickedUid != null) {
+          state = state.copyWith(
+            players: state.players.where((p) => p.userId != kickedUid).toList(),
+          );
+        }
+        _addSystem('🚫 $kickedNick 님이 강퇴되었습니다');
         break;
       case 'round_end':
         if (state.round != null) {
@@ -369,6 +477,7 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
         category: c['category'] as String? ?? '',
         difficulty: c['difficulty'] as int? ?? 1,
         deadlineTs: (c['deadline_ts'] as num).toDouble(),
+        hint: c['hint'] as String?,
       );
     }
 
@@ -377,6 +486,8 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
       ownerId: m['owner_id'] as String?,
       winScore: m['win_score'] as int? ?? 20,
       roundSeconds: m['round_seconds'] as int? ?? 30,
+      roomName: m['room_name'] as String? ?? state.roomName,
+      roomCode: m['room_code'] as String? ?? state.roomCode,
       players: players,
       round: round,
       clearRound: round == null,
@@ -418,6 +529,7 @@ class WsGameRoom extends StateNotifier<WsGameRoomState> {
   @override
   void dispose() {
     _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     _reconnectTimer?.cancel();
     _sub?.cancel();
     _channel?.sink.close();

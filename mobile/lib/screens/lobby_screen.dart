@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/app_theme.dart';
@@ -18,6 +19,14 @@ class LobbyScreen extends ConsumerWidget {
 
     // Navigate when game starts — also handles joining a room already in progress
     ref.listen(wsGameRoomProvider(roomId), (prev, next) {
+      // Kicked / room gone / token expired — the socket won't come back.
+      if (prev?.fatalError == null && next.fatalError != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.fatalError!)),
+        );
+        context.go(Routes.dashboard);
+        return;
+      }
       if (next.connected && next.status == 'playing' && context.mounted) {
         context.go(Routes.game(roomId));
       }
@@ -30,32 +39,18 @@ class LobbyScreen extends ConsumerWidget {
     final players = gs.players;
 
     Future<void> leave() async {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('방을 나가시겠습니까?'),
-          content: const Text('나가면 이 방의 게임에 참여할 수 없습니다.'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('취소')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.danger),
-              child: const Text('나가기'),
-            ),
-          ],
-        ),
+      final ok = await ConfirmDialog.show(
+        context,
+        title: '방을 나가시겠습니까?',
+        content: '나가면 이 방의 게임에 참여할 수 없습니다.',
+        confirmLabel: '나가기',
       );
-      if (ok == true && context.mounted) context.go(Routes.dashboard);
+      if (ok && context.mounted) context.go(Routes.dashboard);
     }
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (_) => leave(),
+      onPopInvokedWithResult: (_, __) => leave(),
       child: Scaffold(
         body: Column(
           children: [
@@ -79,7 +74,7 @@ class LobbyScreen extends ConsumerWidget {
                           ),
                           Expanded(
                             child: Text(
-                              roomId,
+                              gs.roomName.isNotEmpty ? gs.roomName : roomId,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
@@ -108,6 +103,18 @@ class LobbyScreen extends ConsumerWidget {
                           children: [
                             _HeaderChip(label: '선 ${gs.winScore}점'),
                             _HeaderChip(label: '${gs.roundSeconds}초/라운드'),
+                            if (gs.roomCode.isNotEmpty)
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: gs.roomCode));
+                                  AppSnackBar.show(context, '방 코드가 복사되었습니다',
+                                      backgroundColor: AppColors.accent);
+                                },
+                                child: _HeaderChip(
+                                  label: '🔑 ${gs.roomCode}',
+                                  icon: Icons.copy_rounded,
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -140,7 +147,7 @@ class LobbyScreen extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.12),
+                        color: AppColors.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Text('방장',
@@ -190,9 +197,9 @@ class LobbyScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(16),
                 child: isOwner
                     ? GradientButton(
-                        label: 'Start Game  🎮',
+                        label: '게임 시작 🎮',
                         icon: Icons.play_arrow_rounded,
-                        onPressed: gs.connected && players.length >= 1
+                        onPressed: gs.connected && players.isNotEmpty
                             ? () => ref
                                 .read(wsGameRoomProvider(roomId).notifier)
                                 .send({'type': 'start_game'})
@@ -219,21 +226,31 @@ class LobbyScreen extends ConsumerWidget {
 
 class _HeaderChip extends StatelessWidget {
   final String label;
-  const _HeaderChip({required this.label});
+  final IconData? icon;
+  const _HeaderChip({required this.label, this.icon});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(label,
-          style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+          if (icon != null) ...[
+            const SizedBox(width: 4),
+            Icon(icon, color: Colors.white70, size: 12),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -254,17 +271,17 @@ class _PlayerCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: isMe
-            ? AppColors.primary.withOpacity(0.08)
+            ? AppColors.primary.withValues(alpha: 0.08)
             : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isMe
-              ? AppColors.primary.withOpacity(0.3)
+              ? AppColors.primary.withValues(alpha: 0.3)
               : Colors.grey.shade100,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -277,7 +294,7 @@ class _PlayerCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 28,
-                backgroundColor: AppColors.primary.withOpacity(0.15),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.15),
                 child: Text(
                   player.nickname.isNotEmpty
                       ? player.nickname.substring(0, 1)
@@ -313,7 +330,7 @@ class _PlayerCard extends StatelessWidget {
             ),
           ),
           if (isMe)
-            Text('나', style: TextStyle(fontSize: 10, color: AppColors.primary.withOpacity(0.7))),
+            Text('나', style: TextStyle(fontSize: 10, color: AppColors.primary.withValues(alpha: 0.7))),
         ],
       ),
     );

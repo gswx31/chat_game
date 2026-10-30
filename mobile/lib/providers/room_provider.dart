@@ -48,8 +48,3 @@ final categoriesProvider = FutureProvider<List<String>>(
   (ref) => RoomService.instance.getCategories(),
 );
 
-// ── My question sets ──────────────────────────────────────────────────────
-
-final myQuestionSetsProvider = FutureProvider.autoDispose(
-  (ref) => RoomService.instance.getMyQuestionSets(),
-);

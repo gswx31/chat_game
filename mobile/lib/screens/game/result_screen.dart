@@ -1,9 +1,12 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_theme.dart';
 import '../../core/router.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/game_provider.dart';
 
-class ResultScreen extends StatefulWidget {
+class ResultScreen extends ConsumerStatefulWidget {
   final String roomId;
   final List<Map<String, dynamic>> users;
 
@@ -11,14 +14,16 @@ class ResultScreen extends StatefulWidget {
       {required this.roomId, required this.users, super.key});
 
   @override
-  State<ResultScreen> createState() => _ResultScreenState();
+  ConsumerState<ResultScreen> createState() => _ResultScreenState();
 }
 
-class _ResultScreenState extends State<ResultScreen>
+class _ResultScreenState extends ConsumerState<ResultScreen>
     with SingleTickerProviderStateMixin {
   late final List<Map<String, dynamic>> _sorted;
   late final AnimationController _anim;
   final List<bool> _visible = [];
+  bool _navigatingToLobby = false;
+  bool _rematchRequested = false;
 
   @override
   void initState() {
@@ -49,12 +54,23 @@ class _ResultScreenState extends State<ResultScreen>
 
   @override
   Widget build(BuildContext context) {
+    final uid = ref.watch(currentUidProvider);
+    final gs = ref.watch(wsGameRoomProvider(widget.roomId));
+    final isOwner = gs.ownerId == uid;
+
+    // Navigate to lobby when owner triggers rematch
+    ref.listen(wsGameRoomProvider(widget.roomId), (prev, next) {
+      if (!_navigatingToLobby && next.status == 'waiting' && mounted) {
+        _navigatingToLobby = true;
+        context.go(Routes.lobby(widget.roomId));
+      }
+    });
+
     final top3 = _sorted.take(3).toList();
-    final rest = _sorted.skip(3).toList();
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (_) => context.go(Routes.dashboard),
+      onPopInvokedWithResult: (_, __) => context.go(Routes.dashboard),
       child: Scaffold(
         body: Stack(
           children: [
@@ -134,15 +150,63 @@ class _ResultScreenState extends State<ResultScreen>
                               itemCount: _sorted.length + 1,
                               itemBuilder: (_, i) {
                                 if (i == _sorted.length) {
-                                  // Bottom button
+                                  // Bottom buttons
                                   return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 16),
-                                    child: GradientButton(
-                                      label: '메인으로 돌아가기',
-                                      icon: Icons.home_rounded,
-                                      onPressed: () =>
-                                          context.go(Routes.dashboard),
+                                    padding: const EdgeInsets.fromLTRB(0, 8, 0, 20),
+                                    child: Column(
+                                      children: [
+                                        if (isOwner)
+                                          GradientButton(
+                                            label: _rematchRequested
+                                                ? '다시 시작 중...'
+                                                : '다시 하기 🎮',
+                                            icon: Icons.replay_rounded,
+                                            gradient: AppColors.accent_,
+                                            onPressed: _rematchRequested
+                                                ? null
+                                                : () {
+                                                    setState(() => _rematchRequested = true);
+                                                    ref
+                                                        .read(wsGameRoomProvider(
+                                                                widget.roomId)
+                                                            .notifier)
+                                                        .send({'type': 'rematch'});
+                                                  },
+                                          )
+                                        else
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            child: const Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: AppColors.textSecondary,
+                                                  ),
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text('방장이 다시 시작하길 기다리는 중...',
+                                                    style: TextStyle(
+                                                        color: AppColors
+                                                            .textSecondary,
+                                                        fontSize: 13)),
+                                              ],
+                                            ),
+                                          ),
+                                        const SizedBox(height: 10),
+                                        GradientButton(
+                                          label: '메인으로 돌아가기',
+                                          icon: Icons.home_rounded,
+                                          onPressed: () =>
+                                              context.go(Routes.dashboard),
+                                        ),
+                                      ],
                                     ),
                                   );
                                 }
@@ -215,7 +279,7 @@ class _Podium extends StatelessWidget {
               children: [
                 Text(medals[podiumIdx], style: const TextStyle(fontSize: 24)),
                 const SizedBox(height: 4),
-                _SafeAvatar(photoURL: photoURL, name: name, radius: rank == 0 ? 30 : 24, lightBg: true),
+                UserAvatar(photoURL: photoURL, name: name, radius: rank == 0 ? 30 : 24, lightBg: true),
                 const SizedBox(height: 6),
                 Text(
                   name,
@@ -230,21 +294,21 @@ class _Podium extends StatelessWidget {
                 Text(
                   '$score점',
                   style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 11),
                 ),
                 const SizedBox(height: 6),
                 Container(
                   height: heights[podiumIdx],
                   decoration: BoxDecoration(
-                    color: colors[podiumIdx].withOpacity(0.9),
+                    color: colors[podiumIdx].withValues(alpha: 0.9),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(8),
                       topRight: Radius.circular(8),
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: colors[podiumIdx].withOpacity(0.4),
+                        color: colors[podiumIdx].withValues(alpha: 0.4),
                         blurRadius: 10,
                         offset: const Offset(0, 3),
                       )
@@ -256,7 +320,7 @@ class _Podium extends StatelessWidget {
                     style: TextStyle(
                       color: rank == 0
                           ? Colors.white
-                          : Colors.white.withOpacity(0.9),
+                          : Colors.white.withValues(alpha: 0.9),
                       fontWeight: FontWeight.w900,
                       fontSize: rank == 0 ? 22 : 18,
                     ),
@@ -289,11 +353,11 @@ class _RankRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: isTop3
-            ? AppColors.primary.withOpacity(0.05)
+            ? AppColors.primary.withValues(alpha: 0.05)
             : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
         border: isTop3
-            ? Border.all(color: AppColors.primary.withOpacity(0.15))
+            ? Border.all(color: AppColors.primary.withValues(alpha: 0.15))
             : null,
       ),
       child: Row(
@@ -312,7 +376,7 @@ class _RankRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          _SafeAvatar(photoURL: photoURL, name: name, radius: 18),
+          UserAvatar(photoURL: photoURL, name: name, radius: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text(name,
@@ -345,54 +409,3 @@ class _RankRow extends StatelessWidget {
   }
 }
 
-class _SafeAvatar extends StatelessWidget {
-  final String photoURL;
-  final String name;
-  final double radius;
-  final bool lightBg;
-
-  const _SafeAvatar({
-    required this.photoURL,
-    required this.name,
-    required this.radius,
-    this.lightBg = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = lightBg
-        ? Colors.white.withOpacity(0.3)
-        : AppColors.primary.withOpacity(0.15);
-    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: bg,
-      child: ClipOval(
-        child: SizedBox.expand(
-          child: photoURL.isNotEmpty
-              ? Image.network(
-                  photoURL,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Center(
-                    child: Text(initial,
-                        style: TextStyle(
-                          color: lightBg ? Colors.white : AppColors.primary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: radius * 0.75,
-                        )),
-                  ),
-                )
-              : Center(
-                  child: Text(initial,
-                      style: TextStyle(
-                        color: lightBg ? Colors.white : AppColors.primary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: radius * 0.75,
-                      )),
-                ),
-        ),
-      ),
-    );
-  }
-}

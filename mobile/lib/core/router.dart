@@ -1,44 +1,38 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../screens/sign_in_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/create_room_screen.dart';
 import '../screens/join_room_screen.dart';
+import '../screens/history_screen.dart';
 import '../screens/lobby_screen.dart';
 import '../screens/game/game_screen.dart';
 import '../screens/game/result_screen.dart';
+import '../screens/question_sets/question_set_list_screen.dart';
+import '../screens/question_sets/question_set_edit_screen.dart';
+import '../screens/question_sets/question_set_store_screen.dart';
 import '../mypage/my_page_screen.dart';
 import '../settings_screen.dart';
 
-// Named routes — use these constants instead of raw strings
 class Routes {
-  static const signIn = '/sign-in';
-  static const dashboard = '/dashboard';
+  static const dashboard = '/';
   static const createRoom = '/room/create';
   static const joinRoom = '/room/join';
+  static const history = '/history';
   static String lobby(String roomId) => '/room/$roomId/lobby';
   static String game(String roomId) => '/room/$roomId/game';
   static String result(String roomId) => '/room/$roomId/result';
   static const myPage = '/profile';
   static const settings = '/settings';
+  static const questionSets = '/question-sets';
+  static const questionSetCreate = '/question-sets/new';
+  static const questionSetStore = '/question-sets/store';
+  static String questionSetEdit(String id) => '/question-sets/$id';
 }
 
 GoRouter buildRouter() {
   return GoRouter(
     initialLocation: Routes.dashboard,
-    redirect: (context, state) {
-      final signedIn = FirebaseAuth.instance.currentUser != null;
-      final onSignIn = state.matchedLocation == Routes.signIn;
-      if (!signedIn && !onSignIn) return Routes.signIn;
-      if (signedIn && onSignIn) return Routes.dashboard;
-      return null;
-    },
     routes: [
-      GoRoute(
-        path: Routes.signIn,
-        builder: (_, __) => const SignInScreen(),
-      ),
       GoRoute(
         path: Routes.dashboard,
         builder: (_, __) => const DashboardScreen(),
@@ -69,10 +63,13 @@ GoRouter buildRouter() {
         path: '/room/:roomId/result',
         builder: (_, state) {
           final roomId = state.pathParameters['roomId']!;
-          // Pass users via extra
           final users = state.extra as List<Map<String, dynamic>>? ?? [];
           return ResultScreen(roomId: roomId, users: users);
         },
+      ),
+      GoRoute(
+        path: Routes.history,
+        builder: (_, __) => const HistoryScreen(),
       ),
       GoRoute(
         path: Routes.myPage,
@@ -81,6 +78,25 @@ GoRouter buildRouter() {
       GoRoute(
         path: Routes.settings,
         builder: (_, __) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: Routes.questionSets,
+        builder: (_, __) => const QuestionSetListScreen(),
+      ),
+      GoRoute(
+        path: Routes.questionSetCreate,
+        builder: (_, __) => const QuestionSetEditScreen(),
+      ),
+      GoRoute(
+        path: Routes.questionSetStore,
+        builder: (_, __) => const QuestionSetStoreScreen(),
+      ),
+      GoRoute(
+        path: '/question-sets/:id',
+        builder: (_, state) {
+          final id = state.pathParameters['id']!;
+          return QuestionSetEditScreen(setId: id);
+        },
       ),
     ],
     errorBuilder: (_, state) => Scaffold(

@@ -1,144 +1,102 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'api_service.dart';
 import 'storage_service.dart';
 
+const _kDeviceIdKey = 'device_id';
 const _kTokenKey = 'backend_token';
-
-class UserProfile {
-  final String userId;
-  final String nickname;
-  final String? photoUrl;
-  final String? email;
-  final bool isGuest;
-
-  const UserProfile({
-    required this.userId,
-    required this.nickname,
-    this.photoUrl,
-    this.email,
-    this.isGuest = false,
-  });
-
-  factory UserProfile.fromJson(Map<String, dynamic> j) => UserProfile(
-        userId: j['user_id'] as String,
-        nickname: j['nickname'] as String,
-        photoUrl: j['photo_url'] as String?,
-        email: j['email'] as String?,
-        isGuest: j['is_guest'] as bool? ?? false,
-      );
-
-  Map<String, dynamic> toDisplayMap() => {
-        'displayName': nickname,
-        'photoURL': photoUrl ?? '',
-        'email': email ?? '',
-        'isGuest': isGuest,
-      };
-}
+const _kUserIdKey = 'user_id';
+const _kNicknameKey = 'user_nickname';
 
 class AuthService {
   AuthService._();
   static final instance = AuthService._();
 
-  final _auth = FirebaseAuth.instance;
   final _storage = StorageService.instance;
 
-  User? get currentUser => _auth.currentUser;
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  String? _userId;
+  String? _nickname;
 
-  /// Restores the backend JWT on app start so API calls work immediately.
-  Future<void> loadStoredToken() async {
+  bool get isSignedIn => _userId != null && ApiService.instance.token != null;
+  String get userId => _userId ?? '';
+  String get nickname => _nickname ?? 'Guest';
+
+  /// 앱 시작 시 저장된 토큰·userId 복원
+  Future<void> loadStored() async {
+    _userId = await _storage.read(_kUserIdKey);
+    _nickname = await _storage.read(_kNicknameKey);
     final token = await _storage.read(_kTokenKey);
     if (token != null) ApiService.instance.setToken(token);
   }
 
-  Future<User?> signInWithGoogle() async {
+  /// 기기 고유 ID로 게스트 계정 find-or-create
+  Future<bool> signInAsGuest({Duration? timeout}) async {
     try {
-      final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return null;
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+      String? deviceId = await _storage.read(_kDeviceIdKey);
+      if (deviceId == null) {
+        deviceId = _generateDeviceId();
+        await _storage.write(_kDeviceIdKey, deviceId);
+      }
+
+      final data = await ApiService.instance.post(
+        '/auth/guest',
+        {'device_id': deviceId},
+        timeout: timeout,
       );
-      final result = await _auth.signInWithCredential(credential);
-      await _upsertBackend(result.user);
-      return result.user;
+
+      final token = data['access_token'] as String;
+      _userId = data['user_id'] as String;
+      _nickname = data['nickname'] as String? ?? 'Guest';
+
+      ApiService.instance.setToken(token);
+      await _storage.write(_kTokenKey, token);
+      await _storage.write(_kUserIdKey, _userId!);
+      await _storage.write(_kNicknameKey, _nickname!);
+      return true;
     } catch (e) {
-      debugPrint('Google sign-in error: $e');
-      return null;
+      debugPrint('Guest sign-in error: $e');
+      return false;
     }
   }
 
-  Future<User?> signInAnonymously() async {
-    try {
-      final result = await _auth.signInAnonymously();
-      await _upsertBackend(result.user);
-      return result.user;
-    } catch (e) {
-      debugPrint('Anonymous sign-in error: $e');
-      return null;
+  /// 닉네임 변경 후 새 JWT 수령
+  Future<void> updateDisplayName(String name) async {
+    final data = await ApiService.instance.patch('/auth/me', {'nickname': name});
+    final token = data['access_token'] as String?;
+    if (token != null) {
+      _nickname = name;
+      ApiService.instance.setToken(token);
+      await _storage.write(_kTokenKey, token);
+      await _storage.write(_kNicknameKey, name);
     }
   }
 
-  Future<void> signOut() async {
-    await GoogleSignIn().signOut();
-    await _auth.signOut();
-    ApiService.instance.clearToken();
-    await _storage.delete(_kTokenKey);
-  }
-
-  /// Fetch the current user's profile from the backend.
-  /// [uid] parameter is kept for API compatibility with memberProfileProvider.
-  Future<Map<String, dynamic>?> getMemberProfile(String uid) async {
+  /// 백엔드에서 프로필 조회
+  Future<Map<String, dynamic>?> getMemberProfile() async {
     try {
-      final data = await ApiService.instance.get('/auth/me') as Map<String, dynamic>;
-      return UserProfile.fromJson(data).toDisplayMap();
+      final data =
+          await ApiService.instance.get('/auth/me') as Map<String, dynamic>;
+      _nickname = data['nickname'] as String? ?? _nickname;
+      return {
+        'displayName': _nickname,
+        'photoURL': data['photo_url'] as String? ?? '',
+      };
     } catch (e) {
       debugPrint('getMemberProfile error: $e');
       return null;
     }
   }
 
-  /// Update nickname on both backend and local JWT.
-  Future<void> updateDisplayName(String uid, String name) async {
-    try {
-      final data = await ApiService.instance.patch('/auth/me', {'nickname': name});
-      final token = data['access_token'] as String?;
-      if (token != null) {
-        ApiService.instance.setToken(token);
-        await _storage.write(_kTokenKey, token);
-      }
-    } catch (e) {
-      debugPrint('updateDisplayName error: $e');
-      rethrow;
-    }
-  }
-
-  // ── private ──────────────────────────────────────────────────────────────
-
-  /// Find-or-create user in the backend DB by firebase_uid.
-  /// Returns the same user_id every time, fixing the session-ID drift bug.
-  Future<void> _upsertBackend(User? user) async {
-    if (user == null) return;
-    try {
-      final nickname = user.isAnonymous
-          ? 'Guest_${user.uid.substring(0, 6)}'
-          : (user.displayName ?? 'Player');
-
-      final data = await ApiService.instance.post('/auth/upsert', {
-        'firebase_uid': user.uid,
-        'nickname': nickname,
-        if (user.email != null) 'email': user.email,
-        if (user.photoURL != null) 'photo_url': user.photoURL,
-        'is_guest': user.isAnonymous,
-      });
-      final token = data['access_token'] as String;
-      ApiService.instance.setToken(token);
-      await _storage.write(_kTokenKey, token);
-    } catch (e) {
-      debugPrint('Backend upsert error: $e');
-    }
+  // UUID v4 생성 (외부 패키지 불필요)
+  static String _generateDeviceId() {
+    final rand = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex =
+        bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
   }
 }

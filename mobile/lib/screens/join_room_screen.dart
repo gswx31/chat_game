@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../core/api_exception.dart';
 import '../core/app_theme.dart';
 import '../core/router.dart';
 import '../models/room.dart';
@@ -35,8 +36,10 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
       if (!mounted) return;
       if (room.isEnded) { _snack('이미 종료된 방이에요'); return; }
       _navigateToRoom(room);
-    } catch (_) {
-      _snack('해당 코드의 방을 찾을 수 없어요');
+    } catch (e) {
+      _snack(e is ApiException && e.isNetwork
+          ? e.message
+          : '해당 코드의 방을 찾을 수 없어요');
     } finally {
       if (mounted) setState(() => _joining = false);
     }
@@ -55,15 +58,7 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
     }
   }
 
-  void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: AppColors.danger,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ));
-  }
+  void _snack(String msg) => AppSnackBar.show(context, msg);
 
   @override
   Widget build(BuildContext context) {
@@ -89,11 +84,11 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     hintText: '방 이름으로 검색...',
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                     prefixIcon: Icon(Icons.search,
-                        color: Colors.white.withOpacity(0.7)),
+                        color: Colors.white.withValues(alpha: 0.7)),
                     filled: true,
-                    fillColor: Colors.white.withOpacity(0.15),
+                    fillColor: Colors.white.withValues(alpha: 0.15),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(30),
                       borderSide: BorderSide.none,
@@ -130,12 +125,12 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
                         decoration: InputDecoration(
                           hintText: '방코드 (ABCD42)',
                           hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.4),
+                              color: Colors.white.withValues(alpha: 0.4),
                               letterSpacing: 2,
                               fontWeight: FontWeight.normal,
                               fontSize: 14),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.15),
+                          fillColor: Colors.white.withValues(alpha: 0.15),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(30),
                             borderSide: BorderSide.none,
@@ -266,7 +261,7 @@ class _RoomCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
       elevation: 2,
-      shadowColor: AppColors.primary.withOpacity(0.08),
+      shadowColor: AppColors.primary.withValues(alpha: 0.08),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),

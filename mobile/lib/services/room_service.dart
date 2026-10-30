@@ -1,27 +1,6 @@
 import '../models/room.dart';
 import 'api_service.dart';
 
-class MyQuestionSet {
-  final String id;
-  final String title;
-  final String theme;
-  final int questionCount;
-
-  const MyQuestionSet({
-    required this.id,
-    required this.title,
-    required this.theme,
-    required this.questionCount,
-  });
-
-  factory MyQuestionSet.fromJson(Map<String, dynamic> j) => MyQuestionSet(
-        id: j['id'] as String,
-        title: j['title'] as String,
-        theme: j['theme'] as String? ?? '',
-        questionCount: j['question_count'] as int? ?? 0,
-      );
-}
-
 class RoomService {
   RoomService._();
   static final instance = RoomService._();
@@ -66,12 +45,5 @@ class RoomService {
   Future<List<String>> getCategories() async {
     final data = await ApiService.instance.get('/questions/categories') as List;
     return data.cast<String>();
-  }
-
-  Future<List<MyQuestionSet>> getMyQuestionSets() async {
-    final data = await ApiService.instance.get('/question-sets/my') as List;
-    return data
-        .map((j) => MyQuestionSet.fromJson(j as Map<String, dynamic>))
-        .toList();
   }
 }

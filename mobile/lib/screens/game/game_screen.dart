@@ -1,3 +1,4 @@
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 import '../../core/router.dart';
 import '../../game/widgets/message_list.dart';
+import '../../game/widgets/mini_scoreboard.dart';
+import '../../game/widgets/players_sheet.dart';
 import '../../game/widgets/question_display.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/game_provider.dart';
@@ -22,9 +25,41 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _navigatingToResult = false;
+  bool _autoScroll = true;
+  int _betweenRoundCount = 0;
+  Timer? _countdownTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollCtrl.hasClients) return;
+    final pos = _scrollCtrl.position;
+    _autoScroll = pos.pixels >= pos.maxScrollExtent - 80;
+  }
+
+  void _startBetweenRoundCountdown() {
+    _countdownTimer?.cancel();
+    setState(() => _betweenRoundCount = 3);
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() {
+        _betweenRoundCount--;
+        if (_betweenRoundCount <= 0) {
+          t.cancel();
+          _betweenRoundCount = 0;
+        }
+      });
+    });
+  }
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
+    _scrollCtrl.removeListener(_onScroll);
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -34,6 +69,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty) return;
     _msgCtrl.clear();
+    _autoScroll = true;
     ref.read(wsGameRoomProvider(widget.roomId).notifier).send({
       'type': 'chat',
       'text': text,
@@ -46,25 +82,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   void _kick(String userId) {
     if (!mounted) return;
-    showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('강퇴'),
-        content: const Text('이 플레이어를 강퇴하시겠습니까?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('취소')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            child: const Text('강퇴'),
-          ),
-        ],
-      ),
+    ConfirmDialog.show(
+      context,
+      title: '강퇴',
+      content: '이 플레이어를 강퇴하시겠습니까?',
+      confirmLabel: '강퇴',
     ).then((ok) {
-      if (ok == true) {
+      if (ok) {
         ref.read(wsGameRoomProvider(widget.roomId).notifier).send({
           'type': 'kick',
           'target_user_id': userId,
@@ -73,34 +97,22 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     });
   }
 
-  Future<bool> _confirmLeave() async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            title: const Text('나가기'),
-            content: const Text('정말 나가시겠습니까?'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('취소')),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.danger),
-                child: const Text('나가기'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
+  Future<bool> _confirmLeave() => ConfirmDialog.show(
+        context,
+        title: '나가기',
+        content: '정말 나가시겠습니까?',
+        confirmLabel: '나가기',
+      );
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool force = false}) {
+    if (!force && !_autoScroll) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollCtrl.hasClients) {
-        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -119,8 +131,34 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final uid = ref.watch(currentUidProvider);
     final gs = ref.watch(wsGameRoomProvider(widget.roomId));
 
-    // Navigate to result when game ends
+    // Navigate to result when game ends; auto-scroll on new messages; countdown between rounds
     ref.listen(wsGameRoomProvider(widget.roomId), (prev, next) {
+      // Kicked / room gone / token expired — the socket won't come back.
+      if (prev?.fatalError == null && next.fatalError != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.fatalError!)),
+        );
+        context.go(Routes.dashboard);
+        return;
+      }
+      // Compare the newest message, not the count: the log keeps only the last 300 rows, so
+      // once it is full its length never changes and a length check would stop scrolling.
+      if (prev?.chat.lastOrNull?.id != next.chat.lastOrNull?.id) {
+        _scrollToBottom();
+      }
+      // Between-round countdown. (There used to be a full-screen "정답!" overlay here; it
+      // covered every player's screen for 2.2 s and swallowed taps while the next question
+      // was already coming, so slower players lost the next round. The winner and the answer
+      // are shown inside the question card instead, which never hides the question.)
+      final prevEnded = prev?.round?.ended;
+      final nextEnded = next.round?.ended;
+      if (prevEnded == null && nextEnded != null && next.status == 'playing') {
+        _startBetweenRoundCountdown();
+      }
+      if (prevEnded != null && nextEnded == null) {
+        _countdownTimer?.cancel();
+        setState(() => _betweenRoundCount = 0);
+      }
       if (!_navigatingToResult &&
           next.status == 'ended' &&
           next.finalResult != null &&
@@ -139,8 +177,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       }
     });
 
-    _scrollToBottom();
-
     final round = gs.round;
     final isOwner = gs.ownerId == uid;
     final skip = gs.skipState;
@@ -148,25 +184,32 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (_) async {
+      onPopInvokedWithResult: (_, __) async {
         final leave = await _confirmLeave();
-        if (leave && mounted) context.go(Routes.dashboard);
+        if (leave && context.mounted) context.go(Routes.dashboard);
       },
       child: Scaffold(
         backgroundColor: AppColors.bg,
         appBar: AppBar(
-          title: Text(widget.roomId,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          actions: [
-            // Connection indicator
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Icon(
-                gs.connected ? Icons.circle : Icons.circle_outlined,
-                color: gs.connected ? AppColors.accent : AppColors.danger,
-                size: 10,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                gs.roomName.isNotEmpty ? gs.roomName : widget.roomId,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
+              if (round != null)
+                Text(
+                  '라운드 ${round.round}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontWeight: FontWeight.w500),
+                ),
+            ],
+          ),
+          actions: [
             // Players
             Stack(
               children: [
@@ -178,7 +221,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       borderRadius:
                           BorderRadius.vertical(top: Radius.circular(20)),
                     ),
-                    builder: (_) => _PlayersSheet(
+                    builder: (_) => PlayersSheet(
                       players: players,
                       ownerId: gs.ownerId,
                       meId: uid,
@@ -223,8 +266,38 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ],
         ),
         resizeToAvoidBottomInset: true,
-        body: Column(
+        body: Stack(
           children: [
+            Column(
+              children: [
+            // Disconnect banner
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              child: gs.connected
+                  ? const SizedBox.shrink()
+                  : const Material(
+                      color: AppColors.danger,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 7),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.wifi_off_rounded,
+                                color: Colors.white, size: 14),
+                            SizedBox(width: 6),
+                            Text(
+                              '연결이 끊겼습니다. 재연결 중...',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+
             // Waiting state
             if (gs.status == 'waiting')
               Container(
@@ -248,7 +321,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     Text(
                       '방장이 게임을 시작하면 바로 시작돼요 (${players.length}명 대기)',
                       style:
-                          TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
+                          TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
                     ),
                     if (isOwner) ...[
                       const SizedBox(height: 12),
@@ -280,6 +353,42 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 answerMessage: round.ended != null ? _answerMessage(round.ended!) : null,
                 skipVotes: skip?.votes ?? 0,
                 hint: round.hint,
+              ),
+
+            // Between-round countdown banner
+            if (gs.status == 'playing' && round?.ended != null && _betweenRoundCount > 0)
+              AnimatedOpacity(
+                opacity: 1.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  width: double.infinity,
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.timer_outlined,
+                          size: 14, color: AppColors.textSecondary),
+                      const SizedBox(width: 6),
+                      Text(
+                        '다음 문제까지 $_betweenRoundCount초...',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ── 미니 스코어보드 ──────────────────────────────────────────────
+            if (gs.status == 'playing' && players.length > 1)
+              MiniScoreboard(
+                players: players,
+                winScore: gs.winScore,
+                myUid: uid,
               ),
 
             // Chat
@@ -333,7 +442,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 10),
                       ),
-                      onTap: _scrollToBottom,
+                      onTap: () => _scrollToBottom(force: true),
                       onSubmitted: (_) => _sendMessage(),
                       enabled: gs.connected,
                     ),
@@ -358,138 +467,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             SizedBox(height: MediaQuery.of(context).padding.bottom),
           ],
         ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ── Players bottom sheet ───────────────────────────────────────────────────
-
-class _PlayersSheet extends StatelessWidget {
-  final List<PlayerInfo> players;
-  final String? ownerId;
-  final String meId;
-  final bool canKick;
-  final void Function(String userId) onKick;
-
-  const _PlayersSheet({
-    required this.players,
-    required this.ownerId,
-    required this.meId,
-    required this.canKick,
-    required this.onKick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = [...players]..sort((a, b) => b.score.compareTo(a.score));
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        Container(
-          width: 40,
-          height: 4,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade300,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          '참가자 순위',
-          style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary),
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.separated(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            itemCount: sorted.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 4),
-            itemBuilder: (_, i) {
-              final p = sorted[i];
-              final isMe = p.userId == meId;
-              final isOwner = p.userId == ownerId;
-              final medal = i == 0
-                  ? '🥇'
-                  : i == 1
-                      ? '🥈'
-                      : i == 2
-                          ? '🥉'
-                          : '${i + 1}위';
-              return ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 8),
-                leading: CircleAvatar(
-                  radius: 20,
-                  backgroundColor:
-                      AppColors.primary.withOpacity(0.15),
-                  child: Text(
-                    p.nickname.isNotEmpty
-                        ? p.nickname.substring(0, 1)
-                        : '?',
-                    style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w800),
-                  ),
-                ),
-                title: Row(
-                  children: [
-                    Text(
-                      p.nickname,
-                      style: TextStyle(
-                        fontWeight: isMe
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                        color: isMe
-                            ? AppColors.primary
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    if (isOwner) ...[
-                      const SizedBox(width: 4),
-                      const Text('👑', style: TextStyle(fontSize: 14)),
-                    ],
-                  ],
-                ),
-                subtitle: Text('${p.score}점',
-                    style: const TextStyle(fontSize: 12)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(medal, style: const TextStyle(fontSize: 18)),
-                    if (canKick && !isMe && !isOwner) ...[
-                      const SizedBox(width: 4),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          onKick(p.userId);
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.danger,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8),
-                          minimumSize: const Size(0, 32),
-                        ),
-                        child: const Text('강퇴',
-                            style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
-                  ],
-                ),
-                tileColor: i < 3
-                    ? AppColors.primary.withOpacity(0.04)
-                    : null,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}

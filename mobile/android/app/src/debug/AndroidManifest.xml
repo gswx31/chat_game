@@ -3,8 +3,9 @@
          the Flutter tool needs it to communicate with the running application
          to allow setting breakpoints, to provide hot reload, etc.
     -->
-    <uses-permission android:name="android.permission.CAMERA"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- 개발 전용: 에뮬레이터(10.0.2.2)·같은 와이파이의 PC 로 http 통신을 허용한다.
+         release/main 매니페스트에는 없으므로 배포 앱은 https 만 쓴다. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

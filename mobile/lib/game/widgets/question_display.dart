@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
@@ -101,7 +101,7 @@ class _QuestionDisplayState extends State<QuestionDisplay> {
                 _InfoChip(
                   icon: Icons.skip_next_rounded,
                   label: '스킵 ${widget.skipVotes}표',
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                 ),
               const Spacer(),
               if (widget.deadlineTs != null)
@@ -136,7 +136,7 @@ class _QuestionDisplayState extends State<QuestionDisplay> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.white24),
               ),
@@ -171,13 +171,13 @@ class _QuestionDisplayState extends State<QuestionDisplay> {
                     horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: widget.answerMessage!.contains('정답')
-                      ? Colors.green.withOpacity(0.25)
-                      : Colors.orange.withOpacity(0.2),
+                      ? Colors.green.withValues(alpha: 0.25)
+                      : Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: widget.answerMessage!.contains('정답')
-                        ? Colors.greenAccent.withOpacity(0.6)
-                        : Colors.orange.withOpacity(0.4),
+                        ? Colors.greenAccent.withValues(alpha: 0.6)
+                        : Colors.orange.withValues(alpha: 0.4),
                   ),
                 ),
                 child: Row(
@@ -259,7 +259,7 @@ class _ArcPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 4;
     final bgPaint = Paint()
-      ..color = Colors.white.withOpacity(0.15)
+      ..color = Colors.white.withValues(alpha: 0.15)
       ..strokeWidth = 5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -293,7 +293,7 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? Colors.white.withOpacity(0.8);
+    final c = color ?? Colors.white.withValues(alpha: 0.8);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

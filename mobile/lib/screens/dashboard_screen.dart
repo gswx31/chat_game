@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,7 +38,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final uid = ref.watch(authStateProvider).valueOrNull?.uid ?? '';
+    final uid = ref.watch(currentUidProvider);
     final profileAsync = ref.watch(memberProfileProvider(uid));
     final displayName =
         profileAsync.valueOrNull?['displayName'] as String? ?? '게스트';
@@ -47,16 +47,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (_) async {
+      onPopInvokedWithResult: (_, __) async {
         await SystemChannels.platform.invokeMethod('SystemNavigator.pop');
       },
       child: Scaffold(
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // Background
-            Image.asset('assets/images/dashboardbackground.jpg',
-                fit: BoxFit.cover),
+            // Background (color shows through if image asset is missing)
+            Container(color: const Color(0xFF1A1A2E)),
+            Image.asset(
+              'assets/images/dashboardbackground.jpg',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
             // Gradient overlay
             const DecoratedBox(
               decoration: BoxDecoration(
@@ -85,7 +89,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           icon: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.settings_outlined,
@@ -115,7 +119,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                     color: AppColors.primary, width: 3),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primary.withOpacity(0.4),
+                                    color: AppColors.primary.withValues(alpha: 0.4),
                                     blurRadius: 20,
                                     spreadRadius: 2,
                                   )
@@ -124,7 +128,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               child: CircleAvatar(
                                 radius: 42,
                                 backgroundColor:
-                                    AppColors.primary.withOpacity(0.3),
+                                    AppColors.primary.withValues(alpha: 0.3),
                                 backgroundImage: photoURL.isNotEmpty
                                     ? NetworkImage(photoURL) as ImageProvider
                                     : const AssetImage(
@@ -145,7 +149,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           Text(
                             '오늘도 퀴즈 배틀 한 판 어때요?',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               fontSize: 14,
                             ),
                           ),
@@ -179,6 +183,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               subtitle: '진행 중인 방에 입장해요',
                               gradient: AppColors.accent_,
                               onTap: () => context.push(Routes.joinRoom),
+                            ),
+                            const SizedBox(height: 14),
+                            _ActionCard(
+                              icon: Icons.emoji_events_outlined,
+                              label: '내 전적',
+                              subtitle: '지금까지 한 게임 기록이에요',
+                              gradient: AppColors.indigo_,
+                              onTap: () => context.push(Routes.history),
                             ),
                           ],
                         ),
@@ -255,7 +267,7 @@ class _ActionCardState extends State<_ActionCard>
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.25),
+                color: Colors.black.withValues(alpha: 0.25),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -267,7 +279,7 @@ class _ActionCardState extends State<_ActionCard>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(widget.icon, color: Colors.white, size: 24),
@@ -286,13 +298,13 @@ class _ActionCardState extends State<_ActionCard>
                     const SizedBox(height: 2),
                     Text(widget.subtitle,
                         style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 12)),
                   ],
                 ),
               ),
               Icon(Icons.chevron_right_rounded,
-                  color: Colors.white.withOpacity(0.7)),
+                  color: Colors.white.withValues(alpha: 0.7)),
             ],
           ),
         ),

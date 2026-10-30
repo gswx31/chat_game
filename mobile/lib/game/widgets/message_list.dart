@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 
@@ -100,7 +100,7 @@ class _SystemChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
@@ -163,7 +163,7 @@ class _MessageBubble extends StatelessWidget {
                   ? CircleAvatar(
                       radius: 17,
                       backgroundColor:
-                          AppColors.primary.withOpacity(0.2),
+                          AppColors.primary.withValues(alpha: 0.2),
                       backgroundImage: photoURL.isNotEmpty
                           ? NetworkImage(photoURL) as ImageProvider
                           : const AssetImage(
@@ -226,7 +226,7 @@ class _MessageBubble extends StatelessWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
+                            color: Colors.black.withValues(alpha: 0.06),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           )

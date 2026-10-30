@@ -1,48 +1,59 @@
 plugins {
     id 'com.android.application'
     id 'kotlin-android'
-    id 'com.google.gms.google-services' // Google 서비스 플러그인 추가
+    // Flutter Gradle Plugin 은 Android / Kotlin 플러그인 뒤에 와야 합니다.
     id 'dev.flutter.flutter-gradle-plugin'
 }
 
-def localProperties = new Properties()
-def localPropertiesFile = rootProject.file('local.properties')
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.withReader('UTF-8') { reader ->
-        localProperties.load(reader)
-    }
-}
-
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-if (flutterVersionCode == null) {
-    flutterVersionCode = '1'
-}
-
-def flutterVersionName = localProperties.getProperty('flutter.versionName')
-if (flutterVersionName == null) {
-    flutterVersionName = '1.0'
+// 릴리스 서명 정보 (android/key.properties — git 에 올리지 않는다).
+// 파일이 없으면 디버그 키로 서명되어 설치·테스트는 되지만, 다른 PC/CI 에서 만든
+// APK 와는 서명이 달라서 "덮어 설치(업데이트)"가 안 된다. 배포용은 반드시 같은
+// 키스토어로 빌드할 것.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 }
 
 android {
+    // TODO(3단계): 출시 전 com.chatgame 으로 교체 (출시 후 영구 변경 불가)
     namespace = 'com.example.chat_game'
-    compileSdk = 34 // 최신 버전 사용
+    compileSdk = flutter.compileSdkVersion   // 36
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_11.toString()
+    }
 
     defaultConfig {
         applicationId = 'com.example.chat_game'
-        minSdkVersion 23 // minSdkVersion을 23으로 설정
-        targetSdkVersion 34
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+        minSdk = flutter.minSdkVersion           // 24
+        targetSdk = flutter.targetSdkVersion     // 36 (Play 신규 앱 요구치)
+        versionCode = flutter.versionCode        // pubspec.yaml version 의 +N
+        versionName = flutter.versionName        // pubspec.yaml version 의 앞부분
     }
 
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties['keyAlias']
+                keyPassword = keystoreProperties['keyPassword']
+                storeFile = file(keystoreProperties['storeFile'])
+                storePassword = keystoreProperties['storePassword']
+            }
+        }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            // key.properties 가 있으면 release 키, 없으면 디버그 키(로컬 시험용).
+            signingConfig = keystorePropertiesFile.exists() ?
+                signingConfigs.release : signingConfigs.debug
         }
     }
 }
