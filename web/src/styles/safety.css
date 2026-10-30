@@ -1,0 +1,111 @@
+/* Report / block sheets, the blocked-users list and the terms page. */
+
+.safety-who { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 14px 0 6px; }
+.safety-quote { max-width: 100%; color: var(--text-2); font-size: 14px; text-align: center; overflow-wrap: anywhere; }
+.safety-quote--box {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  text-align: left;
+}
+
+.safety-actions { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 10px; }
+.safety-action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.safety-action:active { background: var(--primary-soft); }
+.safety-action--danger { border-color: rgba(239, 68, 68, 0.35); }
+.safety-action--danger b { color: var(--danger); }
+.safety-action__icon { font-size: 24px; width: 32px; text-align: center; flex-shrink: 0; }
+.safety-action__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.safety-action__body b { font-size: 15.5px; }
+.safety-action__body span { color: var(--text-2); font-size: 13px; }
+
+.safety-reasons { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 4px; }
+.safety-reason {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+.safety-reason input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.safety-reason.is-on { border-color: var(--primary); background: var(--primary-soft); }
+.safety-reason__dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #c7cbd4;
+  flex-shrink: 0;
+  background: #fff;
+}
+.safety-reason.is-on .safety-reason__dot { border-color: var(--primary); box-shadow: inset 0 0 0 4px #fff; background: var(--primary); }
+.safety-reason input:focus-visible ~ .safety-reason__dot { outline: 2px solid var(--primary); outline-offset: 2px; }
+.safety-reason__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.safety-reason__body b { font-size: 15px; }
+.safety-reason__body span { color: var(--text-2); font-size: 12.5px; }
+
+.safety-textarea { min-height: 84px; padding: 12px 16px; resize: none; line-height: 1.45; }
+.safety-check { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; cursor: pointer; }
+.safety-check input { width: 20px; height: 20px; accent-color: var(--primary); flex-shrink: 0; }
+
+/* the "⋯" next to other players' chat lines */
+.msg__more {
+  align-self: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3, #9ca3af);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.msg__more:active { background: rgba(0, 0, 0, 0.06); }
+.player-card__more, .sheet-row__more {
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 20px;
+  line-height: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.player-card__more { position: absolute; top: 4px; right: 4px; }
+
+/* blocked users list */
+.blocked-row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
+.blocked-row:last-child { border-bottom: 0; }
+.blocked-row__name { font-weight: 700; }
+.blocked-row__date { color: var(--text-2); font-size: 12.5px; }
+
+/* terms of use */
+.terms { max-width: 640px; margin: 0 auto; padding: 8px 4px 40px; line-height: 1.7; font-size: 15px; }
+.terms h2 { margin: 26px 0 8px; font-size: 17px; }
+.terms ul { margin: 6px 0; padding-left: 20px; }
+.terms li { margin: 4px 0; }
+.terms-consent { display: flex; align-items: flex-start; gap: 10px; margin-top: 4px; font-size: 13.5px; color: var(--text-2); line-height: 1.5; }
+.terms-consent input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--primary); flex-shrink: 0; }
+.terms-consent a { color: var(--primary); font-weight: 700; }

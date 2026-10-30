@@ -1,48 +1,66 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { roomsApi } from "../api/client";
+import { AppBar } from "../components/AppBar";
+import { roomPath } from "../lib/paths";
 import { useAuth } from "../store/auth";
+import SignIn from "./SignIn";
 
+/**
+ * `/j/:code` — the link a friend shares. Not signed in: nickname step with the invitation
+ * shown. Signed in: look the room up and walk straight in.
+ */
 export default function Join() {
-  const { code } = useParams();
-  const { user } = useAuth();
+  const { code = "" } = useParams();
+  const user = useAuth((s) => s.user);
   const nav = useNavigate();
   const [err, setErr] = useState<string | null>(null);
+  const upper = code.toUpperCase();
 
   useEffect(() => {
-    if (!user || !code) return;
+    if (!user || !upper) return;
     let cancelled = false;
     (async () => {
       try {
-        const room = await roomsApi.getByCode(code);
+        const room = await roomsApi.getByCode(upper);
         if (cancelled) return;
-        if (room.status === "ended") { setErr("이미 종료된 게임이에요"); return; }
-        nav(`/rooms/${room.id}`, { replace: true });
+        if (room.status === "ended") {
+          setErr("이미 종료된 게임이에요");
+          return;
+        }
+        nav(roomPath(room.id), { replace: true });
       } catch {
         if (!cancelled) setErr("해당 코드의 방을 찾을 수 없어요");
       }
     })();
-    return () => { cancelled = true; };
-  }, [user, code, nav]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, upper, nav]);
 
-  if (!user) return <Navigate to={`/?code=${encodeURIComponent(code ?? "")}`} replace />;
+  if (!user) return <SignIn inviteCode={upper} />;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-      <div className="card anim-fade-up" style={{ maxWidth: 380, borderRadius: "var(--radius-lg)", textAlign: "center", padding: "40px 28px" }}>
+    <div className="app-page">
+      <AppBar title="방 입장" back="/home" />
+      <div className="page-body">
         {err ? (
-          <>
-            <div style={{ fontSize: 36, marginBottom: 14 }}>😕</div>
-            <h3 style={{ marginBottom: 10 }}>입장할 수 없어요</h3>
-            <div className="muted" style={{ marginBottom: 24 }}>{err}</div>
-            <button onClick={() => nav("/lobby")}>로비로 돌아가기</button>
-          </>
+          <div className="empty">
+            <div className="empty__icon">😕</div>
+            <div className="empty__title">입장할 수 없어요</div>
+            <div className="empty__text">{err}</div>
+            <button className="btn" onClick={() => nav("/home", { replace: true })}>
+              메인으로 돌아가기
+            </button>
+          </div>
         ) : (
-          <>
-            <div style={{ fontSize: 36, marginBottom: 14, animation: "pulse 1.2s infinite" }}>🚪</div>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>방 입장 중...</div>
-            <div className="muted">코드 <span style={{ color: "var(--primary-light)", fontFamily: "monospace", fontWeight: 700 }}>{code}</span></div>
-          </>
+          <div className="empty">
+            <span className="spinner" />
+            <div className="empty__title">방 입장 중...</div>
+            <div className="empty__text">
+              코드 <b className="mono">{upper}</b>
+            </div>
+          </div>
         )}
       </div>
     </div>
